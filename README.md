@@ -1,45 +1,34 @@
 # Gemini Proxy
 
-A lightweight, self-hosted proxy that sits in front of the Google Gemini API
-and pools multiple Gemini API keys behind one stable endpoint. Apps send a
-normal Gemini `generateContent` request with a local proxy key; the proxy
-verifies it, swaps in the best available Gemini key, forwards the request, and
-returns Gemini's response unchanged.
+Use many Gemini API keys as if they were one. Gemini Proxy runs on your own
+server, gives you a single URL and a single API key for your apps, and picks
+the best Google key behind the scenes.
 
-Runs as a single Docker container with zero npm dependencies (Node.js
-built-ins only) and a small SQLite database. Ships with a browser dashboard
-for key management and live usage telemetry.
+```
+Your apps  ──▶  Gemini Proxy  ──▶  Google Gemini
+             (your server)      (rotates keys)
+```
 
-## Features
+Works with any tool that already speaks the Gemini API – automations, scripts,
+SDKs, chat UIs, you name it.
 
-- **Drop-in Gemini compatibility** — same `/v1beta/models/{model}:generateContent`
-  request shape; only the upstream API key is replaced.
-- **Smart key rotation** — for each model, requests go to the eligible key
-  with the fewest successful calls since the last daily reset. Usage is
-  tracked per model independently, so heavy use of one model never starves
-  another.
-- **Automatic failover** — if a key fails, the request is retried on the next
-  key. Transient overloads cool that model/key down for 60 seconds; quota
-  failures cool it down until Gemini's next midnight Pacific reset.
-- **Auto model discovery** — calling `/v1beta/models` syncs the real model
-  list from Google, removes models that no longer exist, and records the
-  exact sync time shown in the dashboard. Models are never added manually.
-- **Web dashboard** — first visit creates the admin account. Add, enable,
-  disable, or remove Gemini keys, issue local client keys, and watch per-key
-  usage, cooldown reasons, and the upcoming reset time.
-- **n8n ready** — works with n8n's **Google Gemini (PaLM) API** credential by
-  just changing the host URL (see below).
-- **Hardened by default** — scrypt-hashed passwords, session cookies with CSRF
-  protection, login rate limiting, strict security headers, SHA-256-hashed
-  client keys (shown once at creation), and an optional one-time setup token.
-- **Persistent by design** — SQLite (WAL mode) lives in a bind-mounted
-  `./data` directory and survives restarts, recreations, and image upgrades.
-  No manual `chmod`/`chown`; the entrypoint fixes permissions and drops to an
-  unprivileged user. Works on SELinux hosts (Fedora/RHEL) via the `:Z` label.
+## Why use it?
 
-## Quick start
+- **One key for everything** – your apps use one proxy key. Your real Google
+  keys stay private on your server.
+- **Never hit a quota wall** – when one key gets busy or runs out for the day,
+  the next key takes over automatically.
+- **Fair sharing** – each model uses the key that has done the least work
+  today, so all your keys last longer.
+- **See everything** – a built-in web page shows requests, usage per key, and
+  cooldowns.
+- **Easy install** – one Docker Compose file. No coding needed.
+- **Free and light** – no paid services, no extra databases. Everything is in
+  one small container.
 
-Requirements: Docker and Docker Compose.
+## Setup with Docker Compose (easiest way)
+
+You only need Docker installed. Copy these commands:
 
 ```bash
 mkdir gemini-proxy && cd gemini-proxy
@@ -47,113 +36,89 @@ curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/
 docker compose up -d
 ```
 
-This pulls the published image:
+That's it. The app is now running on port `18765`.
 
-```text
-ghcr.io/muhammad-sho/gemini-proxy:latest
-```
+> **Note:** the first install needs the published image to exist. It is built
+> automatically after every push to `main`, so wait for that workflow to
+> finish before your first `docker compose up`.
 
-A GitHub Actions workflow publishes the image after every push to `main`. The
-first installation must wait until that workflow succeeds.
+### Create your admin account
 
-### First-time setup
-
-1. Open `http://SERVER_IP:18765/`.
-2. If `SETUP_TOKEN` was not provided via environment, fetch the auto-generated
-   one-time token from the container logs:
-
+1. Open `http://YOUR_SERVER_IP:18765` in your browser.
+2. If the page asks for a **setup token**, get it from the logs:
    ```bash
    docker compose logs gemini-proxy | grep "setup token"
    ```
+3. Pick a username and a password (at least 8 characters). This creates your
+   account – then sign in.
 
-3. Create the dashboard account (username + password of at least 8 characters).
-4. Save the generated **client API key** — it is shown only once. This is the
-   key your apps (and n8n) will use.
-5. Add your Gemini API keys in the dashboard.
+Done! Now, inside the dashboard:
 
-## Usage
+- Go to **Gemini API Keys** and add your Google Gemini keys.
+- Go to **Client Keys** and generate a key for your apps. Every key has a
+  **Copy Key** button, so you can grab it again anytime.
 
-Point any Gemini client at the proxy and send the client key instead of a
-Google key:
+## How to use it
+
+Any app that can call the Gemini API can use the proxy. Just change two
+things: the URL points to your server, and the key is your client key.
+Everything else stays exactly the same as a normal Gemini request.
 
 ```bash
 curl -X POST \
-  http://SERVER_IP:18765/v1beta/models/gemini-2.0-flash:generateContent \
+  http://YOUR_SERVER_IP:18765/v1beta/models/gemini-2.0-flash:generateContent \
   -H 'Content-Type: application/json' \
-  -H 'x-proxy-api-key: the-client-key-generated-during-setup' \
+  -H 'x-proxy-api-key: YOUR-CLIENT-KEY' \
   -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
 ```
 
-### Connect from n8n
+The response is Google's response, unchanged.
 
-In n8n's **Google Gemini (PaLM) API** credential:
+## Good to know
 
-- **Host**: your proxy URL, e.g. `http://192.168.100.14:18765`
-- **API Key**: the client key generated during setup
+- **Daily reset**: usage counters follow Gemini's own schedule and reset at
+  midnight Pacific time.
+- **Cooldowns**: a key that fails with "busy" errors rests for 60 seconds. A
+  key that hits its daily limit rests until the next Pacific midnight. Other
+  keys keep working meanwhile.
+- **Models update themselves**: the model list is refreshed from Google every
+  time something asks for `/v1beta/models`.
+- **Your data stays home**: settings and keys live in a small database file at
+  `./data/` next to your `docker-compose.yml`. Back up that folder and you
+  have backed up everything.
+- **Updating**: run `docker compose pull && docker compose up -d`. Your data
+  is kept.
 
-The proxy accepts n8n's `GET /v1beta/models?key=...` connection test as well
-as the standard `x-proxy-api-key` header used for requests.
+## Settings (optional)
 
-## Key selection & cooldowns
+Everything works without any configuration. If you want to tweak, add these
+to the `environment:` section of your `docker-compose.yml`:
 
-- Only **successful** requests count toward usage; failures do not.
-- Per model/key cooldowns:
-  - Transient overload/server errors (408/429/5xx): 60 seconds.
-  - Daily quota errors: until Gemini's next midnight Pacific reset.
-- Daily usage follows Gemini's documented Pacific Time reset, so the
-  dashboard's counters and reset time match Google's quotas.
-
-## Configuration
-
-All settings are optional environment variables; normal configuration happens
-in the dashboard.
-
-| Variable | Default | Description |
+| Setting | Default | Meaning |
 | --- | --- | --- |
-| `PORT` | `18765` | HTTP port the server listens on |
-| `DB_PATH` | `/data/local-gemini-proxy.db` (in-container) | SQLite database location |
-| `SETUP_TOKEN` | random, printed to logs | Token required to complete first-time setup |
-| `TRUST_PROXY` | unset | Set `1`/`true` to trust `X-Forwarded-For` behind a reverse proxy |
-| `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
-| `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
-| `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
+| `PORT` | `18765` | Port the proxy listens on |
+| `SETUP_TOKEN` | random (in logs) | Your own token for first-time setup |
+| `TRUST_PROXY` | off | Set to `1` if you serve through a reverse proxy |
+| `REQUEST_TIMEOUT_MS` | `120000` | Wait time for Google's answer |
 
-See `.env.example` for a starting point.
-
-## Local development
-
-Build locally instead of pulling the published image:
+## Run your own copy for development
 
 ```bash
+git clone https://github.com/muhammad-sho/Gemini_proxy.git
+cd Gemini_proxy
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Or run directly with Node.js 22+ (uses only built-in modules):
+Or with Node.js 22+ directly (no packages to install):
 
 ```bash
 node server.js
 ```
 
-## Data & persistence
+## Security in short
 
-SQLite is stored at `./data/local-gemini-proxy.db` next to
-`docker-compose.yml`. Docker creates `./data` automatically; the entrypoint
-creates the database file, makes the mounted directory writable when
-root-owned, then runs Node as an unprivileged user. Database, WAL, and journal
-files stay host-visible together. Back up that directory to back up
-everything (keys, accounts, usage).
-
-## Production security
-
-The repository contains no runtime credentials. Gemini keys are entered after
-first-run setup and stored in plaintext in the private SQLite volume because
-the proxy must recover them for upstream authentication — protect that volume
-and back it up securely.
-
-The app intentionally listens on `0.0.0.0:18765`, and Compose publishes that
-port on all host interfaces. For public deployments:
-
-- Put it behind an HTTPS reverse proxy.
-- Restrict dashboard access with firewall rules or a VPN.
-- Expose only ports 80/443 publicly; do not expose plain-HTTP port 18765 to
-  the internet except for a temporary, trusted-network test.
+- Your Google keys are stored only inside the database on your own server,
+  because the proxy needs them to talk to Google. Keep the server safe and
+  back the `./data` folder up securely.
+- Do not expose port `18765` straight to the internet. Put it behind an HTTPS
+  reverse proxy or keep it inside your local network / VPN.

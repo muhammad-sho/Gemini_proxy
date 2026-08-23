@@ -35,6 +35,7 @@ db.exec(`
     label TEXT NOT NULL,
     key_hash TEXT NOT NULL UNIQUE,
     key_prefix TEXT NOT NULL,
+    key_text TEXT,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL
   );
@@ -71,6 +72,7 @@ db.exec(`
 `);
 
 try { db.exec("ALTER TABLE model_key_state ADD COLUMN cooldown_reason TEXT NOT NULL DEFAULT ''"); } catch {}
+try { db.exec("ALTER TABLE client_keys ADD COLUMN key_text TEXT"); } catch {}
 
 function json(response, status, value) {
   const body = JSON.stringify(value);
@@ -197,12 +199,12 @@ async function passwordValid(password, user) {
 
 function createClientKey(label = "Default client key") {
   const value = crypto.randomBytes(32).toString("base64url");
-  db.prepare("INSERT INTO client_keys (label,key_hash,key_prefix,created_at) VALUES (?,?,?,?)")
-    .run(label, hashValue(value), `${value.slice(0, 8)}...`, Date.now());
+  db.prepare("INSERT INTO client_keys (label,key_hash,key_prefix,key_text,created_at) VALUES (?,?,?,?,?)")
+    .run(label, hashValue(value), `${value.slice(0, 8)}...`, value, Date.now());
   return value;
 }
 
-const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius:6px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius:8px;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}.key{font-family:'JetBrains Mono',monospace;font-size:13px;background:#fffbeb;border:1px solid #fde68a;color:#b45309;padding:12px;border-radius:8px;word-break:break-all;margin:12px 0}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>First-Time Setup</h1></div><p>Create the dashboard administrator. Enter the setup token printed in the container logs.</p><form id="setup"><label>Setup Token</label><input name="setupToken" placeholder="Setup token from logs" required><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({setupToken:f.get('setupToken'),username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Save this client key now. It will not be shown again:</p><div class="key">'+d.clientApiKey+'</div><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
+const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius:6px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius:8px;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}.key{font-family:'JetBrains Mono',monospace;font-size:13px;background:#fffbeb;border:1px solid #fde68a;color:#b45309;padding:12px;border-radius:8px;word-break:break-all;margin:12px 0}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>First-Time Setup</h1></div><p>Create the dashboard administrator. Enter the setup token printed in the container logs.</p><form id="setup"><label>Setup Token</label><input name="setupToken" placeholder="Setup token from logs" required><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({setupToken:f.get('setupToken'),username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Administrator account created.</p><p>Sign in to add Gemini keys and generate client API keys.</p><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
 
 function modelNameFromPath(path) {
   const match = path.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
@@ -460,19 +462,17 @@ async function handleRequest(request, response) {
     if (String(body.password || "").length < 8) return json(response, 400, { error: "Password must be at least 8 characters" });
     const salt = crypto.randomBytes(16).toString("hex");
     const passwordHash = await passwordDigest(String(body.password), salt);
-    const clientApiKey = crypto.randomBytes(32).toString("base64url");
     try {
       db.exec("BEGIN IMMEDIATE");
       if (hasAdmin()) { db.exec("ROLLBACK"); return json(response, 409, { error: "Setup is already complete" }); }
       db.prepare("INSERT INTO admin_users (username,password_hash,password_salt,created_at) VALUES (?,?,?,?)").run(String(body.username), passwordHash, salt, Date.now());
-      db.prepare("INSERT INTO client_keys (label,key_hash,key_prefix,created_at) VALUES (?,?,?,?)").run("Default client key", hashValue(clientApiKey), `${clientApiKey.slice(0, 8)}...`, Date.now());
       db.exec("COMMIT");
     } catch (error) {
       try { db.exec("ROLLBACK"); } catch {}
       if (String(error.code || "").includes("CONSTRAINT")) return json(response, 409, { error: "Setup is already complete" });
       throw error;
     }
-    return json(response, 201, { ok: true, clientApiKey });
+    return json(response, 201, { ok: true });
   }
   if (url.pathname === "/login" && request.method === "POST") {
     const address = clientAddress(request);
@@ -501,7 +501,7 @@ async function handleRequest(request, response) {
   if (url.pathname.startsWith("/api/admin") && request.method !== "GET" && !csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
-    const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked FROM client_keys ORDER BY id").all();
+    const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at") });
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {

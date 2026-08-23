@@ -366,10 +366,9 @@ body{
 
   <!-- Navigation -->
   <nav class="nav-row">
-    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
-    <button class="nav-tab" data-tab="usage" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -395,6 +394,17 @@ body{
     <div class="info-strip">
       <div><strong>Reset Schedule:</strong> <span id="ov-reset">Loading schedule...</span></div>
       <div><strong>Model Sync:</strong> <span id="ov-mc">—</span></div>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Model Usage & Cooldown Status</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Model</th><th>Gemini Key</th><th>Requests Today</th><th>Last Request</th><th>State</th></tr>
+          </thead>
+          <tbody id="usageTbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 
@@ -453,25 +463,6 @@ body{
     </div>
   </div>
 
-  <!-- Usage Panel -->
-  <div id="panel-usage" class="panel">
-    <div class="info-strip" style="margin-bottom:20px">
-      <div><strong>Reset Schedule:</strong> <span id="usage-reset">—</span></div>
-      <div><strong>Last Model Sync:</strong> <span id="usage-mc">—</span></div>
-    </div>
-    <div class="section-box">
-      <h2 class="section-title">Model Usage & Cooldown Status</h2>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr><th>Model</th><th>Gemini Key</th><th>Requests Today</th><th>Last Request</th><th>State</th></tr>
-          </thead>
-          <tbody id="usageTbody"></tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
 </div>
 
 <script>
@@ -497,8 +488,8 @@ async function copyText(v, btn) {
 function showClientKey(key) {
   const b = document.getElementById('generatedClientKey');
   b.className = 'key-alert visible';
-  b.innerHTML = `<div class="key-alert-head">Important: Save this client key now</div>
-    <div style="font-size:12px;color:var(--text-dim)">This key will not be displayed again.</div>
+  b.innerHTML = `<div class="key-alert-head">Your new client key</div>
+    <div style="font-size:12px;color:var(--text-dim)">Use it in your apps. You can copy it again anytime from the Client Keys list.</div>
     <code class="key-alert-code">${esc(key)}</code>
     <button class="btn-tbl" onclick="copyText('${esc(key)}',this)">Copy Key</button>`;
 }
@@ -524,8 +515,6 @@ function render(d) {
 
   document.getElementById('ov-reset').textContent = rst;
   document.getElementById('ov-mc').textContent = mc;
-  document.getElementById('usage-reset').textContent = rst;
-  document.getElementById('usage-mc').textContent = mc;
 
   const ck = d.clientKeys || [];
   document.getElementById('clientKeysTbody').innerHTML = ck.length
@@ -534,6 +523,7 @@ function render(d) {
         <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
         <td>${k.enabled ? '<span class="status-tag tag-ready">Active</span>' : '<span class="status-tag tag-off">Disabled</span>'}</td>
         <td>
+          ${k.value ? `<button class="btn-tbl" onclick="copyText('${esc(k.value)}',this)">Copy Key</button>` : ''}
           <button class="btn-tbl" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
           <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
         </td>
