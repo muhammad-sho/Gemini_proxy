@@ -363,6 +363,48 @@ async function handleGemini(request, response, model) {
 }
 
 const dashboard = fs.readFileSync("dashboard.html", "utf8");
+const dashboardPage = dashboard
+  .replace("alert('Save this client key now:\\n\\n'+d.clientApiKey);", "showClientKey(d.clientApiKey);")
+  .replace("</body>", `<script>
+    let generatedClientKey = "";
+    function showClientKey(key) {
+      generatedClientKey = key;
+      const box = document.querySelector("#generatedClientKey") || document.createElement("div");
+      box.id = "generatedClientKey";
+      box.style.cssText = "background:#fff8df;border:1px solid #e4c766;padding:14px;margin:12px 0;word-break:break-all";
+      box.innerHTML = "<strong>Save this client key now. It will not be shown again.</strong><br>";
+      const value = document.createElement("code");
+      value.textContent = key;
+      box.appendChild(value);
+      box.appendChild(document.createElement("br"));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Copy key";
+      button.onclick = async () => {
+        let copied = false;
+        try {
+          if (navigator.clipboard) {
+            await navigator.clipboard.writeText(generatedClientKey);
+            copied = true;
+          }
+        } catch {}
+        if (!copied) {
+          const input = document.createElement("textarea");
+          input.value = generatedClientKey;
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.appendChild(input);
+          input.focus();
+          input.select();
+          copied = document.execCommand("copy");
+          input.remove();
+        }
+        button.textContent = copied ? "Copied" : "Copy failed - select the key manually";
+      };
+      box.appendChild(button);
+      document.body.prepend(box);
+    }
+  </script></body>`);
 
 async function handleRequest(request, response) {
   securityHeaders(response);
@@ -374,7 +416,7 @@ async function handleRequest(request, response) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       return response.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Login</title><style>body{font:16px system-ui;max-width:360px;margin:15vh auto;padding:20px}input,button{padding:10px;margin:5px 0;width:100%;box-sizing:border-box}button{background:#18202a;color:white;border:0;border-radius:5px}</style><h1>Gemini Proxy</h1><form method="post" action="/login"><input name="username" placeholder="Username" required><input name="password" type="password" placeholder="Password" required><button>Sign in</button></form>');
     }
-    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(dashboard);
+    response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(dashboardPage);
   }
   if (url.pathname === "/api/setup" && request.method === "POST") {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
