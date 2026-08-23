@@ -411,7 +411,7 @@ async function handleRequest(request, response) {
   securityHeaders(response);
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
-  if (url.pathname === "/v1beta/models" && request.method === "GET") {
+  if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
     if (!localKeyIsValid(request)) return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
     const models = db.prepare("SELECT name FROM models WHERE enabled = 1 ORDER BY name").all()
       .map(({ name }) => ({ name: `models/${name}`, displayName: name, supportedGenerationMethods: ["generateContent"] }));
