@@ -442,8 +442,11 @@
     </div>
     <div class="info-strip">
       <div><strong>Reset Schedule:</strong> <span id="ov-reset">Loading schedule...</span></div>
-      <div style="display:flex;align-items:center;gap:8px"><strong>Model Sync:</strong> <span id="ov-mc">—</span>
-        <button class="btn-tbl" id="refreshModelsBtn" onclick="refreshModels()">Refresh</button></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong>Model Sync:</strong> <span id="ov-mc">—</span>
+        <span id="cacheStatus" style="font-size:12px;color:var(--text-muted)"></span>
+        <button class="btn-tbl" id="refreshModelsBtn" onclick="refreshModels()">Refresh</button>
+      </div>
     </div>
     <div class="section-box">
       <h2 class="section-title">Model Usage &amp; Cooldown Status</h2>
@@ -708,6 +711,18 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
     document.getElementById('ov-reset').textContent = rst;
     document.getElementById('ov-mc').textContent = mc;
+    const cacheAge = data.modelsCheckedAt ? Date.now() - Number(data.modelsCheckedAt) : null;
+    const statusEl = document.getElementById('cacheStatus');
+    if (!data.modelsCheckedAt) {
+      statusEl.textContent = ' (no cache)';
+      statusEl.style.color = 'var(--rose)';
+    } else if (cacheAge < 24 * 3600e3) {
+      statusEl.textContent = ` (fresh, ${Math.round(cacheAge/60e3)}m ago)`;
+      statusEl.style.color = 'var(--emerald)';
+    } else {
+      statusEl.textContent = ` (stale, ${Math.round(cacheAge/3600e3)}h ago)`;
+      statusEl.style.color = 'var(--amber)';
+    }
 
     const ck = data.clientKeys || [];
     document.getElementById('clientKeysTbody').innerHTML = ck.length
@@ -812,12 +827,19 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   async function refreshModels() {
     const btn = document.getElementById('refreshModelsBtn');
+    const statusEl = document.getElementById('cacheStatus');
     btn.disabled = true;
     btn.textContent = 'Refreshing...';
+    statusEl.textContent = ' (refreshing...)';
+    statusEl.style.color = 'var(--amber)';
     try {
       await api('/api/admin/models/refresh', { method: 'POST' });
       load();
-    } catch (err) { alert(err.message); }
+    } catch (err) {
+      alert(err.message);
+      statusEl.textContent = ' (error)';
+      statusEl.style.color = 'var(--rose)';
+    }
     btn.disabled = false;
     btn.textContent = 'Refresh';
   }
