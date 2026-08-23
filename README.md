@@ -1,47 +1,80 @@
-# Gemini proxy app
+# Gemini Proxy
 
-Simple Docker app with a browser dashboard and a small SQLite database. It
-accepts the normal Gemini `generateContent` request, verifies a local key,
-replaces it with one of the configured Gemini keys, forwards the request, and
-returns Gemini's response.
+A lightweight, self-hosted proxy that sits in front of the Google Gemini API
+and pools multiple Gemini API keys behind one stable endpoint. Apps send a
+normal Gemini `generateContent` request with a local proxy key; the proxy
+verifies it, swaps in the best available Gemini key, forwards the request, and
+returns Gemini's response unchanged.
 
-## Start
+Runs as a single Docker container with zero npm dependencies (Node.js
+built-ins only) and a small SQLite database. Ships with a browser dashboard
+for key management and live usage telemetry.
 
-Normal server installation pulls the published GHCR image:
+## Features
+
+- **Drop-in Gemini compatibility** — same `/v1beta/models/{model}:generateContent`
+  request shape; only the upstream API key is replaced.
+- **Smart key rotation** — for each model, requests go to the eligible key
+  with the fewest successful calls since the last daily reset. Usage is
+  tracked per model independently, so heavy use of one model never starves
+  another.
+- **Automatic failover** — if a key fails, the request is retried on the next
+  key. Transient overloads cool that model/key down for 60 seconds; quota
+  failures cool it down until Gemini's next midnight Pacific reset.
+- **Auto model discovery** — calling `/v1beta/models` syncs the real model
+  list from Google, removes models that no longer exist, and records the
+  exact sync time shown in the dashboard. Models are never added manually.
+- **Web dashboard** — first visit creates the admin account. Add, enable,
+  disable, or remove Gemini keys, issue local client keys, and watch per-key
+  usage, cooldown reasons, and the upcoming reset time.
+- **n8n ready** — works with n8n's **Google Gemini (PaLM) API** credential by
+  just changing the host URL (see below).
+- **Hardened by default** — scrypt-hashed passwords, session cookies with CSRF
+  protection, login rate limiting, strict security headers, SHA-256-hashed
+  client keys (shown once at creation), and an optional one-time setup token.
+- **Persistent by design** — SQLite (WAL mode) lives in a bind-mounted
+  `./data` directory and survives restarts, recreations, and image upgrades.
+  No manual `chmod`/`chown`; the entrypoint fixes permissions and drops to an
+  unprivileged user. Works on SELinux hosts (Fedora/RHEL) via the `:Z` label.
+
+## Quick start
+
+Requirements: Docker and Docker Compose.
 
 ```bash
-mkdir gemini-proxy
-cd gemini-proxy
+mkdir gemini-proxy && cd gemini-proxy
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
 docker compose up -d
 ```
 
-The image name is:
+This pulls the published image:
 
 ```text
 ghcr.io/muhammad-sho/gemini-proxy:latest
 ```
 
-The repository includes a GitHub Actions workflow that publishes this image
-after a successful push to `main`. The first installation must wait until that
-workflow succeeds; the repository must not document the image as available
-before that point.
+A GitHub Actions workflow publishes the image after every push to `main`. The
+first installation must wait until that workflow succeeds.
 
-For local development, build instead:
+### First-time setup
 
-```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-```
+1. Open `http://SERVER_IP:18765/`.
+2. If `SETUP_TOKEN` was not provided via environment, fetch the auto-generated
+   one-time token from the container logs:
 
-Open `http://SERVER_IP:18765/`. On the first visit, create the dashboard
-account. Setup generates a local client API key for n8n; save it because it is
-shown only once. Add Gemini keys from the dashboard.
-Models are discovered automatically when the proxy's `/v1beta/models` endpoint
-is called.
+   ```bash
+   docker compose logs gemini-proxy | grep "setup token"
+   ```
 
-## Client request
+3. Create the dashboard account (username + password of at least 8 characters).
+4. Save the generated **client API key** — it is shown only once. This is the
+   key your apps (and n8n) will use.
+5. Add your Gemini API keys in the dashboard.
 
-Use the normal Gemini URL, but point it at the proxy and send the local key:
+## Usage
+
+Point any Gemini client at the proxy and send the client key instead of a
+Google key:
 
 ```bash
 curl -X POST \
@@ -51,45 +84,76 @@ curl -X POST \
   -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
 ```
 
-The proxy preserves the Gemini request and changes only its upstream API key.
-For each model, it selects the least-used eligible key based on successful
-requests, independently of every other model. Failed requests are not counted.
-Transient overloads use a 60-second per-model/key cooldown; quota/limit
-failures cool down until the next Pacific daily reset.
+### Connect from n8n
 
-Models are never added manually. Calling `/v1beta/models` checks Google's real
-models endpoint, refreshes the local model list, and records the exact check
-time shown in the dashboard. Models no longer returned by Google are removed
-from the local list.
+In n8n's **Google Gemini (PaLM) API** credential:
 
-For n8n's **Google Gemini(PaLM) Api** credential, set `Host` to the proxy
-URL, for example `http://192.168.100.14:18765`, and set `API Key` to the
-local client key generated by the dashboard. The proxy accepts n8n's
-`GET /v1beta/models?key=...` connection test as well as the normal
-`x-proxy-api-key` header used for requests.
+- **Host**: your proxy URL, e.g. `http://192.168.100.14:18765`
+- **API Key**: the client key generated during setup
 
-SQLite is stored at `./data/local-gemini-proxy.db` beside `compose.yaml` and
-survives container restarts, recreations, and image upgrades. Compose mounts
-the relative `./data` directory so SQLite's database, WAL, and journal files
-all remain host-visible together. Docker creates `./data` automatically when
-needed. The image startup creates the database file, makes the mounted
-directory writable when it is root-owned, and then runs Node as an
-unprivileged user. The `:Z` mount label also handles SELinux hosts such as
-Fedora/RHEL, where an unlabeled bind mount can make SQLite appear read-only.
-No manual `chmod`, `chown`, or database creation is required.
-Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
-overload/server errors retry across keys and cool down that model/key for 60
-seconds. Daily quota errors cool down that model/key until the next Pacific
-midnight.
+The proxy accepts n8n's `GET /v1beta/models?key=...` connection test as well
+as the standard `x-proxy-api-key` header used for requests.
+
+## Key selection & cooldowns
+
+- Only **successful** requests count toward usage; failures do not.
+- Per model/key cooldowns:
+  - Transient overload/server errors (408/429/5xx): 60 seconds.
+  - Daily quota errors: until Gemini's next midnight Pacific reset.
+- Daily usage follows Gemini's documented Pacific Time reset, so the
+  dashboard's counters and reset time match Google's quotas.
+
+## Configuration
+
+All settings are optional environment variables; normal configuration happens
+in the dashboard.
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `18765` | HTTP port the server listens on |
+| `DB_PATH` | `/data/local-gemini-proxy.db` (in-container) | SQLite database location |
+| `SETUP_TOKEN` | random, printed to logs | Token required to complete first-time setup |
+| `TRUST_PROXY` | unset | Set `1`/`true` to trust `X-Forwarded-For` behind a reverse proxy |
+| `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
+| `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
+| `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
+
+See `.env.example` for a starting point.
+
+## Local development
+
+Build locally instead of pulling the published image:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+```
+
+Or run directly with Node.js 22+ (uses only built-in modules):
+
+```bash
+node server.js
+```
+
+## Data & persistence
+
+SQLite is stored at `./data/local-gemini-proxy.db` next to
+`docker-compose.yml`. Docker creates `./data` automatically; the entrypoint
+creates the database file, makes the mounted directory writable when
+root-owned, then runs Node as an unprivileged user. Database, WAL, and journal
+files stay host-visible together. Back up that directory to back up
+everything (keys, accounts, usage).
 
 ## Production security
 
 The repository contains no runtime credentials. Gemini keys are entered after
 first-run setup and stored in plaintext in the private SQLite volume because
-the proxy must recover them for upstream authentication. Protect that volume
-and back it up securely. The app intentionally listens on `0.0.0.0:18765` for
-self-hosted/container use, and the Compose mapping publishes that port on all
-host interfaces. Put it behind an HTTPS reverse proxy, restrict dashboard
-access with firewall rules or a VPN, and expose only ports 80/443 publicly. Do
-not expose plain HTTP port 18765 to the public internet except for a temporary,
-trusted-network test.
+the proxy must recover them for upstream authentication — protect that volume
+and back it up securely.
+
+The app intentionally listens on `0.0.0.0:18765`, and Compose publishes that
+port on all host interfaces. For public deployments:
+
+- Put it behind an HTTPS reverse proxy.
+- Restrict dashboard access with firewall rules or a VPN.
+- Expose only ports 80/443 publicly; do not expose plain-HTTP port 18765 to
+  the internet except for a temporary, trusted-network test.
