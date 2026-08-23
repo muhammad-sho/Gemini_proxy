@@ -355,6 +355,15 @@
       font-size: 14px;
     }
 
+    .empty-cell { color: var(--text-muted); font-style: italic; }
+
+    /* Usage Matrix */
+    .data-table th:first-child,
+    .data-table td:first-child { text-align: left; font-weight: 600; }
+    .data-table th { text-align: center; white-space: nowrap; }
+    .data-table td { text-align: center; vertical-align: middle; }
+    .data-table .empty-cell { opacity: 0.5; }
+
     /* Code Blocks */
     .code-block { position: relative; }
     .code-block pre {
@@ -441,9 +450,7 @@
       <p class="section-desc">Successful requests per Gemini key since the current reset window began, plus any active cooldowns.</p>
       <div class="table-wrap">
         <table class="data-table">
-          <thead>
-            <tr><th>Model</th><th>Gemini Key</th><th>Requests Today</th><th>Last Request</th><th>State</th></tr>
-          </thead>
+          <thead id="usageThead"></thead>
           <tbody id="usageTbody"></tbody>
         </table>
       </div>
@@ -730,15 +737,42 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       : '<tr><td colspan="4" class="empty-notice">No Gemini API keys configured.</td></tr>';
 
     const us = data.usage || [];
-    document.getElementById('usageTbody').innerHTML = us.length
-      ? us.map(row => `<tr>
-          <td><strong>${esc(row.model)}</strong></td>
-          <td>${esc(row.label)} <span style="color:var(--text-dim)">(${esc(row.masked)})</span></td>
-          <td style="font-weight:700;font-size:15px">${row.today}</td>
-          <td style="color:var(--text-dim)">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
-          <td>${cooldown(row)}</td>
-        </tr>`).join('')
-      : '<tr><td colspan="5" class="empty-notice">No requests recorded in the current day window.</td></tr>';
+
+    // Build pivot matrix: models (rows) × keys (cols)
+    const usedModels = [...new Set(us.map(r => r.model))].sort();
+    const usedKeys = [...new Set(us.map(r => r.key_id))].sort((a,b)=>a-b);
+    const keyLabels = {};
+    const keyMasks = {};
+    us.forEach(r => { keyLabels[r.key_id] = r.label; keyMasks[r.key_id] = r.masked; });
+
+    function cellHtml(row) {
+      const active = row.cooldown_until && Number(row.cooldown_until) > Date.now();
+      const badge = active
+        ? `<span class="status-tag tag-cooldown" title="${esc(row.cooldown_reason || 'quota')}">●</span>`
+        : `<span class="status-tag tag-ready">●</span>`;
+      return `<span style="font-weight:700;font-size:15px">${row.today}</span> ${badge}`;
+    }
+
+    if (!us.length) {
+      document.getElementById('usageThead').innerHTML = '';
+      document.getElementById('usageTbody').innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in the current day window.</td></tr>';
+      return;
+    }
+
+    // Header row with key labels
+    const headerHtml = ['<th>Model</th>'].concat(usedKeys.map(id => `<th title="${esc(keyMasks[id])}">${esc(keyLabels[id])}</th>`)).join('');
+
+    // Data rows
+    const rowsHtml = usedModels.map(model => {
+      const cells = usedKeys.map(keyId => {
+        const match = us.find(r => r.model === model && r.key_id === keyId);
+        return match ? `<td>${cellHtml(match)}</td>` : '<td class="empty-cell">—</td>';
+      }).join('');
+      return `<tr><th>${esc(model)}</th>${cells}</tr>`;
+    }).join('');
+
+    document.getElementById('usageThead').innerHTML = '<tr>' + headerHtml + '</tr>';
+    document.getElementById('usageTbody').innerHTML = rowsHtml;
   }
 
   function showPanel(name, tabEl, updateHash = true) {
