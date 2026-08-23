@@ -297,7 +297,7 @@ function forwardToGemini(request, body, key) {
     upstreamUrl.search = incomingUrl.search;
     if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
     const headers = {};
-    for (const name of ["content-type", "accept", "user-agent", "accept-encoding", "x-goog-api-client", "x-goog-user-project"]) {
+    for (const name of ["content-type", "accept", "user-agent", "x-goog-api-client", "x-goog-user-project"]) {
       if (request.headers[name]) headers[name] = request.headers[name];
     }
     headers["content-length"] = body.length;
@@ -404,29 +404,31 @@ async function refreshModels(request) {
       if (result.status >= 200 && result.status < 300) {
         let payload;
         try { payload = JSON.parse(result.body.toString("utf8")); } catch { payload = null; }
-        if (payload && Array.isArray(payload.models)) {
-          const allModels = [...payload.models];
-          let pageToken = payload.nextPageToken;
-          for (let page = 0; page < 20 && pageToken; page += 1) {
-            const pageUrl = new URL(request.url, "http://localhost");
-            pageUrl.searchParams.set("pageToken", pageToken);
-            const pageResult = await forwardToGemini({ ...request, url: pageUrl.pathname + pageUrl.search }, Buffer.alloc(0), key.api_key);
-            console.log(`[Models] page ${page+2} status: ${pageResult.status}`);
-            if (pageResult.status < 200 || pageResult.status >= 300) break;
-            let pagePayload;
-            try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { pagePayload = null; }
-            if (!pagePayload || !Array.isArray(pagePayload.models)) break;
-            allModels.push(...pagePayload.models);
-            pageToken = pagePayload.nextPageToken;
-          }
-          const cachedPayload = buildModelsPayload(allModels);
-          console.log(`[Models] cached ${cachedPayload.models.length} models from key ${key.id}`);
-          if (cachedPayload.models.length) {
-            setMeta("models_cache", JSON.stringify(cachedPayload));
-            setMeta("models_checked_at", Date.now());
-            syncModelsFromGemini({ body: Buffer.from(JSON.stringify(cachedPayload)) });
-            return result;
-          }
+        if (!payload || !Array.isArray(payload.models)) {
+          console.error(`[Models] key ${key.id}: 200 but body is not a models list (first bytes: ${result.body.subarray(0, 40).toString("hex")})`);
+          continue;
+        }
+        const allModels = [...payload.models];
+        let pageToken = payload.nextPageToken;
+        for (let page = 0; page < 20 && pageToken; page += 1) {
+          const pageUrl = new URL(request.url, "http://localhost");
+          pageUrl.searchParams.set("pageToken", pageToken);
+          const pageResult = await forwardToGemini({ ...request, url: pageUrl.pathname + pageUrl.search }, Buffer.alloc(0), key.api_key);
+          console.log(`[Models] page ${page+2} status: ${pageResult.status}`);
+          if (pageResult.status < 200 || pageResult.status >= 300) break;
+          let pagePayload;
+          try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { pagePayload = null; }
+          if (!pagePayload || !Array.isArray(pagePayload.models)) break;
+          allModels.push(...pagePayload.models);
+          pageToken = pagePayload.nextPageToken;
+        }
+        const cachedPayload = buildModelsPayload(allModels);
+        console.log(`[Models] cached ${cachedPayload.models.length} models from key ${key.id}`);
+        if (cachedPayload.models.length) {
+          setMeta("models_cache", JSON.stringify(cachedPayload));
+          setMeta("models_checked_at", Date.now());
+          syncModelsFromGemini({ body: Buffer.from(JSON.stringify(cachedPayload)) });
+          return result;
         }
       }
     } catch (error) {
