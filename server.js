@@ -13,6 +13,9 @@ const TRANSIENT_COOLDOWN_SECONDS = 60;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const sessions = new Map();
 const loginAttempts = new Map();
+const loginFailures = [];
+const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
+const SETUP_TOKEN = process.env.SETUP_TOKEN || crypto.randomBytes(32).toString("base64url");
 
 const db = new DatabaseSync(DB_PATH);
 try { fs.chmodSync(DB_PATH, 0o600); } catch {}
@@ -83,7 +86,7 @@ function securityHeaders(response) {
   response.setHeader("X-Frame-Options", "DENY");
   response.setHeader("Referrer-Policy", "no-referrer");
   response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
   response.setHeader("Cache-Control", "no-store");
 }
 
@@ -141,20 +144,36 @@ function csrfValid(request) {
 }
 
 function clientAddress(request) {
+  if (TRUST_PROXY) {
+    const forwarded = request.headers["x-forwarded-for"];
+    if (forwarded) return String(forwarded).split(",")[0].trim() || "unknown";
+  }
   return request.socket.remoteAddress || "unknown";
+}
+
+function pruneLoginAttempts() {
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  for (const [address, attempts] of loginAttempts) {
+    const recent = attempts.filter((time) => time > cutoff);
+    if (recent.length) loginAttempts.set(address, recent);
+    else loginAttempts.delete(address);
+  }
+  while (loginFailures.length && loginFailures[0] <= cutoff) loginFailures.shift();
 }
 
 function rateLimited(address) {
   const now = Date.now();
   const recent = (loginAttempts.get(address) || []).filter((time) => time > now - 15 * 60 * 1000);
   loginAttempts.set(address, recent);
-  return recent.length >= 10;
+  pruneLoginAttempts();
+  return recent.length >= 10 || loginFailures.length >= 1000;
 }
 
 function recordLoginFailure(address) {
   const recent = loginAttempts.get(address) || [];
   recent.push(Date.now());
   loginAttempts.set(address, recent);
+  loginFailures.push(Date.now());
 }
 
 function hasAdmin() {
@@ -162,11 +181,16 @@ function hasAdmin() {
 }
 
 function passwordDigest(password, salt) {
-  return crypto.scryptSync(password, salt, 64).toString("hex");
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey.toString("hex"));
+    });
+  });
 }
 
-function passwordValid(password, user) {
-  const actual = Buffer.from(passwordDigest(password, user.password_salt), "hex");
+async function passwordValid(password, user) {
+  const actual = Buffer.from(await passwordDigest(password, user.password_salt), "hex");
   const expected = Buffer.from(user.password_hash, "hex");
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
@@ -178,7 +202,7 @@ function createClientKey(label = "Default client key") {
   return value;
 }
 
-const setupPage = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Setup</title><style>body{font:16px system-ui;max-width:440px;margin:10vh auto;padding:20px}input,button{padding:10px;margin:6px 0;width:100%;box-sizing:border-box}button{background:#18202a;color:white;border:0;border-radius:5px}.key{background:#eef6ee;padding:12px;word-break:break-all}</style><h1>First-time setup</h1><p>Create the dashboard administrator. A local client API key will be generated for n8n.</p><form id="setup"><input name="username" placeholder="Username" required><input name="password" type="password" minlength="8" placeholder="Password (8+ characters)" required><button>Create account</button></form><div id="result"></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<p>Save this client key now. It will not be shown again.</p><div class="key">'+d.clientApiKey+'</div><p><a href="/">Continue to login</a></p>';e.target.remove()}</script>`;
+const setupPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Setup</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Plus Jakarta Sans',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;width:100%;max-width:440px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:20px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius:6px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:20px;line-height:1.5}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius:8px;background:#0f172a;color:#fff;cursor:pointer;transition:background .15s}button:hover{background:#334155}.key{font-family:'JetBrains Mono',monospace;font-size:13px;background:#fffbeb;border:1px solid #fde68a;color:#b45309;padding:12px;border-radius:8px;word-break:break-all;margin:12px 0}a{color:#0f172a;font-weight:700;text-decoration:none}a:hover{text-decoration:underline}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>First-Time Setup</h1></div><p>Create the dashboard administrator. Enter the setup token printed in the container logs.</p><form id="setup"><label>Setup Token</label><input name="setupToken" placeholder="Setup token from logs" required><label>Admin Username</label><input name="username" placeholder="Username" required><label>Admin Password</label><input name="password" type="password" minlength="8" placeholder="Password (8+ chars)" required><button>Create Administrator Account</button></form><div id="result"></div></div><script>setup.onsubmit=async e=>{e.preventDefault();let f=new FormData(e.target);let r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({setupToken:f.get('setupToken'),username:f.get('username'),password:f.get('password')})});let d=await r.json();if(!r.ok)return alert(d.error);result.innerHTML='<div style="margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0"><p style="color:#0f172a;font-weight:700;margin-bottom:4px">Save this client key now. It will not be shown again:</p><div class="key">'+d.clientApiKey+'</div><p style="margin-top:12px"><a href="/">Continue to Sign In &rarr;</a></p></div>';e.target.remove()}</script></body></html>`;
 
 function modelNameFromPath(path) {
   const match = path.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
@@ -423,7 +447,7 @@ async function handleRequest(request, response) {
     if (!hasAdmin()) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(setupPage); }
     if (!dashboardSessionValid(request)) {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return response.end('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Login</title><style>body{font:16px system-ui;max-width:360px;margin:15vh auto;padding:20px}input,button{padding:10px;margin:5px 0;width:100%;box-sizing:border-box}button{background:#18202a;color:white;border:0;border-radius:5px}</style><h1>Gemini Proxy</h1><form method="post" action="/login"><input name="username" placeholder="Username" required><input name="password" type="password" placeholder="Password" required><button>Sign in</button></form>');
+      return response.end('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gemini Proxy Sign In</title><link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:\'Plus Jakarta Sans\',system-ui,sans-serif;background:#f8fafc;color:#0f172a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.card{background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:32px;width:100%;max-width:380px;box-shadow:0 4px 12px rgba(0,0,0,0.05)}.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px}.badge{width:32px;height:32px;background:#0f172a;color:#fff;border-radius:6px;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}h1{font-size:20px;font-weight:800;letter-spacing:-0.02em}p{font-size:13px;color:#64748b;margin-bottom:24px}label{display:block;font-size:12px;font-weight:700;color:#475569;margin-bottom:6px}input{font-family:inherit;font-size:14px;width:100%;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;outline:none;margin-bottom:14px}input:focus{border-color:#0f172a}button{font-family:inherit;font-size:14px;font-weight:700;width:100%;padding:12px;border:none;border-radius:8px;background:#0f172a;color:#fff;cursor:pointer;margin-top:6px;transition:background .15s}button:hover{background:#334155}</style></head><body><div class="card"><div class="brand"><div class="badge">GP</div><h1>Gemini Proxy</h1></div><p>Sign in to access key routing & usage telemetry</p><form method="post" action="/login"><label>Username</label><input name="username" placeholder="Username" required><label>Password</label><input name="password" type="password" placeholder="Password" required><button>Sign In</button></form></div></body></html>');
     }
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(dashboardPage);
   }
@@ -431,11 +455,23 @@ async function handleRequest(request, response) {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
     if (rateLimited(clientAddress(request))) return json(response, 429, { error: "Too many setup attempts" });
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
+    if (body.setupToken !== SETUP_TOKEN) { recordLoginFailure(clientAddress(request)); return json(response, 403, { error: "Invalid setup token" }); }
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(String(body.username || ""))) return json(response, 400, { error: "Username must be 3-64 letters, numbers, _, ., or -" });
     if (String(body.password || "").length < 8) return json(response, 400, { error: "Password must be at least 8 characters" });
     const salt = crypto.randomBytes(16).toString("hex");
-    db.prepare("INSERT INTO admin_users (username,password_hash,password_salt,created_at) VALUES (?,?,?,?)").run(String(body.username), passwordDigest(String(body.password), salt), salt, Date.now());
-    const clientApiKey = createClientKey();
+    const passwordHash = await passwordDigest(String(body.password), salt);
+    const clientApiKey = crypto.randomBytes(32).toString("base64url");
+    try {
+      db.exec("BEGIN IMMEDIATE");
+      if (hasAdmin()) { db.exec("ROLLBACK"); return json(response, 409, { error: "Setup is already complete" }); }
+      db.prepare("INSERT INTO admin_users (username,password_hash,password_salt,created_at) VALUES (?,?,?,?)").run(String(body.username), passwordHash, salt, Date.now());
+      db.prepare("INSERT INTO client_keys (label,key_hash,key_prefix,created_at) VALUES (?,?,?,?)").run("Default client key", hashValue(clientApiKey), `${clientApiKey.slice(0, 8)}...`, Date.now());
+      db.exec("COMMIT");
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch {}
+      if (String(error.code || "").includes("CONSTRAINT")) return json(response, 409, { error: "Setup is already complete" });
+      throw error;
+    }
     return json(response, 201, { ok: true, clientApiKey });
   }
   if (url.pathname === "/login" && request.method === "POST") {
@@ -443,14 +479,23 @@ async function handleRequest(request, response) {
     if (rateLimited(address)) return json(response, 429, { error: "Too many login attempts; try again later" });
     let raw; try { raw = (await readBody(request)).toString(); } catch { return json(response, 400, { error: "Invalid request" }); }
     const body = Object.fromEntries(new URLSearchParams(raw));
-    const user = db.prepare("SELECT * FROM admin_users WHERE username = ?").get(body.username || db.prepare("SELECT username FROM admin_users ORDER BY id LIMIT 1").get().username);
-    if (!user || !passwordValid(String(body.password || ""), user)) { recordLoginFailure(address); return json(response, 401, { error: "Invalid username or password" }); }
+    const fallbackUser = db.prepare("SELECT username FROM admin_users ORDER BY id LIMIT 1").get();
+    const username = body.username || fallbackUser?.username;
+    const user = username ? db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username) : null;
+    if (!user || !(await passwordValid(String(body.password || ""), user))) { recordLoginFailure(address); return json(response, 401, { error: "Invalid username or password" }); }
     loginAttempts.delete(address);
     const token = crypto.randomBytes(32).toString("hex");
     const csrfToken = crypto.randomBytes(32).toString("hex");
     sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
     response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `gemini_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
+  }
+  if (url.pathname === "/logout" && request.method === "POST") {
+    if (!csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
+    const token = (request.headers.cookie || "").match(/(?:^|; )gemini_dashboard=([^;]+)/)?.[1];
+    if (token) sessions.delete(token);
+    response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": ["gemini_dashboard=; HttpOnly; SameSite=Strict; Max-Age=0", "gemini_csrf=; SameSite=Strict; Max-Age=0"] });
+    return response.end();
   }
   if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) return json(response, 401, { error: "Dashboard login required" });
   if (url.pathname.startsWith("/api/admin") && request.method !== "GET" && !csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
@@ -465,7 +510,7 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
-  if (clientKeyMatch && request.method === "PATCH") { const body = JSON.parse((await readBody(request)).toString()); db.prepare("UPDATE client_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(clientKeyMatch[1])); return json(response, 200, { ok: true }); }
+  if (clientKeyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE client_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(clientKeyMatch[1])); return json(response, 200, { ok: true }); }
   if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
@@ -473,7 +518,7 @@ async function handleRequest(request, response) {
     db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(String(body.label), String(body.key), Date.now()); return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
-  if (keyMatch && request.method === "PATCH") { const body = JSON.parse((await readBody(request)).toString()); db.prepare("UPDATE api_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(keyMatch[1])); return json(response, 200, { ok: true }); }
+  if (keyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE api_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(keyMatch[1])); return json(response, 200, { ok: true }); }
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
     db.prepare("DELETE FROM requests WHERE key_id=?").run(keyId);
@@ -493,4 +538,7 @@ const server = http.createServer((request, response) => {
   });
 });
 
-server.listen(PORT, "0.0.0.0", () => console.log(`Gemini proxy listening on port ${PORT}`));
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Gemini proxy listening on port ${PORT}`);
+  if (!hasAdmin()) console.log(`[Setup] One-time setup token: ${SETUP_TOKEN}`);
+});

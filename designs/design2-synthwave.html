@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEMINI PROXY // SYNTH-WAVE '84</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Righteous&family=VT323&display=swap" rel="stylesheet">
+<style>
+:root{
+  --night: #0e051c;
+  --night-deep: #07020d;
+  --neon-pink: #ff2a85;
+  --neon-purple: #9b2bfb;
+  --neon-cyan: #00f2fe;
+  --neon-yellow: #fefe33;
+  --sunset-grad: linear-gradient(180deg, #ff2a85 0%, #ff7300 60%, #fefe33 100%);
+  --grid-pink: rgba(255, 42, 133, 0.25);
+  --card-bg: rgba(23, 11, 44, 0.85);
+  --border-neon: 1px solid rgba(255, 42, 133, 0.4);
+  --text-main: #fcf9ff;
+  --text-dim: #9d8db3;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  background:var(--night);
+  color:var(--text-main);
+  min-height:100vh;
+  position:relative;
+  overflow-x:hidden;
+}
+
+/* 3D Synthwave Horizon Perspective Grid */
+.horizon-grid{
+  position:fixed;
+  bottom:0;left:0;right:0;
+  height:40vh;
+  background-image:
+    linear-gradient(var(--grid-pink) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-pink) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transform: perspective(300px) rotateX(60deg);
+  transform-origin: bottom center;
+  pointer-events:none;
+  z-index:0;
+  opacity:0.6;
+}
+.synth-sun{
+  position:fixed;
+  bottom:15vh;left:50%;
+  transform:translateX(-50%);
+  width:280px;height:280px;
+  border-radius:50%;
+  background:linear-gradient(180deg, #ff2a85 0%, #ff8c00 50%, #fefe33 100%);
+  box-shadow:0 0 80px rgba(255, 42, 133, 0.6);
+  pointer-events:none;
+  z-index:0;
+  opacity:0.25;
+  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+.shell{
+  position:relative;
+  z-index:10;
+  max-width:1140px;
+  margin:0 auto;
+  padding:32px 20px 80px;
+}
+
+/* Top Neon Header */
+.synth-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  background:var(--card-bg);
+  border:1px solid rgba(255, 42, 133, 0.4);
+  box-shadow:0 0 24px rgba(255, 42, 133, 0.2), inset 0 0 16px rgba(155, 43, 251, 0.2);
+  border-radius:18px;
+  padding:18px 24px;
+  margin-bottom:28px;
+  flex-wrap:wrap;
+  gap:16px;
+}
+.brand-box{display:flex;align-items:center;gap:14px}
+.brand-icon{
+  width:44px;height:44px;
+  background:var(--sunset-grad);
+  border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Righteous',cursive;
+  font-size:22px;
+  color:#fff;
+  box-shadow:0 0 16px rgba(255, 42, 133, 0.5);
+}
+.brand-title{
+  font-family:'Righteous',cursive;
+  font-size:24px;
+  letter-spacing:0.04em;
+  background:linear-gradient(90deg, #ff2a85, #00f2fe);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}
+.brand-sub{
+  font-family:'VT323',monospace;
+  font-size:16px;
+  color:var(--neon-yellow);
+  letter-spacing:0.1em;
+}
+
+.btn-synth-exit{
+  font-family:'Righteous',cursive;
+  font-size:13px;
+  padding:8px 18px;
+  border-radius:8px;
+  background:transparent;
+  border:1px solid var(--neon-pink);
+  color:var(--neon-pink);
+  cursor:pointer;
+  transition:all .2s;
+}
+.btn-synth-exit:hover{
+  background:var(--neon-pink);
+  color:#fff;
+  box-shadow:0 0 18px var(--neon-pink);
+}
+
+/* Neon Navigation */
+.synth-nav{
+  display:flex;
+  gap:10px;
+  margin-bottom:28px;
+  overflow-x:auto;
+}
+.synth-nav-item{
+  font-family:'Righteous',cursive;
+  font-size:14px;
+  letter-spacing:0.05em;
+  padding:12px 24px;
+  border-radius:12px;
+  background:rgba(23, 11, 44, 0.6);
+  border:1px solid rgba(155, 43, 251, 0.3);
+  color:var(--text-dim);
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.synth-nav-item:hover{
+  color:#fff;
+  border-color:var(--neon-cyan);
+}
+.synth-nav-item.active{
+  background:linear-gradient(135deg, rgba(255, 42, 133, 0.3), rgba(155, 43, 251, 0.3));
+  border-color:var(--neon-pink);
+  color:#fff;
+  box-shadow:0 0 20px rgba(255, 42, 133, 0.35);
+}
+
+/* Panels */
+.panel{display:none;animation:neonSlide .3s ease}
+.panel.active{display:block}
+@keyframes neonSlide{
+  from{opacity:0;transform:scale(0.98)}
+  to{opacity:1;transform:scale(1)}
+}
+
+/* Stat Cards */
+.synth-stats{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:18px;
+  margin-bottom:28px;
+}
+.synth-card{
+  background:var(--card-bg);
+  border:1px solid rgba(155, 43, 251, 0.35);
+  border-radius:16px;
+  padding:22px;
+  position:relative;
+  box-shadow:0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.synth-card::after{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;height:2px;
+  background:linear-gradient(90deg, var(--neon-pink), var(--neon-cyan));
+  border-radius:16px 16px 0 0;
+}
+.synth-card-label{
+  font-family:'Righteous',cursive;
+  font-size:12px;
+  letter-spacing:0.08em;
+  color:var(--neon-cyan);
+  text-transform:uppercase;
+  margin-bottom:8px;
+}
+.synth-card-val{
+  font-family:'VT323',monospace;
+  font-size:48px;
+  line-height:1;
+  color:#fff;
+  text-shadow:0 0 12px rgba(0, 242, 254, 0.6);
+  margin-bottom:4px;
+}
+
+/* Meta HUD Strip */
+.hud-strip{
+  background:rgba(14, 5, 28, 0.9);
+  border:1px solid rgba(0, 242, 254, 0.3);
+  border-radius:12px;
+  padding:14px 20px;
+  font-family:'VT323',monospace;
+  font-size:18px;
+  color:var(--neon-yellow);
+  display:flex;
+  flex-wrap:wrap;
+  gap:28px;
+  margin-bottom:28px;
+}
+
+/* Glass Section Container */
+.synth-section{
+  background:var(--card-bg);
+  border:1px solid rgba(255, 42, 133, 0.3);
+  border-radius:16px;
+  padding:24px;
+  margin-bottom:24px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5);
+}
+.section-neon-title{
+  font-family:'Righteous',cursive;
+  font-size:18px;
+  color:var(--neon-pink);
+  margin-bottom:16px;
+  letter-spacing:0.04em;
+}
+
+/* Synth Forms */
+.synth-form{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-end;
+}
+.synth-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1;
+  min-width:180px;
+}
+.synth-label{
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.06em;
+  color:var(--text-dim);
+}
+.synth-input{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  font-size:14px;
+  background:rgba(7, 2, 13, 0.8);
+  border:1px solid rgba(155, 43, 251, 0.4);
+  color:#fff;
+  border-radius:10px;
+  padding:10px 14px;
+  outline:none;
+  transition:all .2s;
+  width:100%;
+}
+.synth-input:focus{
+  border-color:var(--neon-pink);
+  box-shadow:0 0 12px rgba(255, 42, 133, 0.4);
+}
+
+/* Neon Buttons */
+.btn-neon-action{
+  font-family:'Righteous',cursive;
+  font-size:13px;
+  letter-spacing:0.05em;
+  padding:11px 22px;
+  border-radius:10px;
+  background:linear-gradient(135deg, var(--neon-pink), var(--neon-purple));
+  color:#fff;
+  border:none;
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+  box-shadow:0 0 16px rgba(255, 42, 133, 0.4);
+}
+.btn-neon-action:hover{
+  opacity:0.9;
+  transform:translateY(-1px);
+  box-shadow:0 0 24px rgba(255, 42, 133, 0.7);
+}
+.btn-neon-sm{
+  font-size:11px;
+  padding:5px 12px;
+  border-radius:6px;
+  background:rgba(0, 242, 254, 0.15);
+  border:1px solid var(--neon-cyan);
+  color:var(--neon-cyan);
+  cursor:pointer;
+}
+.btn-neon-sm:hover{background:var(--neon-cyan);color:#000}
+.btn-neon-danger{
+  border-color:var(--neon-pink);
+  color:var(--neon-pink);
+  background:rgba(255, 42, 133, 0.15);
+}
+.btn-neon-danger:hover{background:var(--neon-pink);color:#fff}
+
+/* Key Alert */
+.synth-key-alert{
+  display:none;
+  background:rgba(254, 254, 51, 0.08);
+  border:1px solid var(--neon-yellow);
+  border-radius:12px;
+  padding:18px;
+  margin-bottom:20px;
+  animation:neonSlide .25s ease;
+}
+.synth-key-alert.visible{display:block}
+.synth-alert-head{
+  font-family:'Righteous',cursive;
+  color:var(--neon-yellow);
+  font-size:14px;
+  margin-bottom:6px;
+}
+.synth-key-code{
+  font-family:'VT323',monospace;
+  font-size:18px;
+  background:#000;
+  padding:8px 12px;
+  border-radius:6px;
+  color:var(--neon-cyan);
+  word-break:break-all;
+  margin:10px 0;
+  display:block;
+}
+
+/* Tables */
+.synth-table-wrap{overflow-x:auto}
+.synth-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+.synth-table th{
+  text-align:left;
+  font-family:'Righteous',cursive;
+  font-size:12px;
+  letter-spacing:0.06em;
+  color:var(--neon-cyan);
+  padding:12px 14px;
+  border-bottom:1px solid rgba(0, 242, 254, 0.3);
+}
+.synth-table td{
+  padding:14px;
+  border-bottom:1px solid rgba(155, 43, 251, 0.2);
+  vertical-align:middle;
+}
+
+/* Badges */
+.synth-pill{
+  display:inline-block;
+  font-family:'VT323',monospace;
+  font-size:16px;
+  padding:2px 8px;
+  border-radius:4px;
+  background:rgba(0, 242, 254, 0.15);
+  color:var(--neon-cyan);
+  border:1px solid var(--neon-cyan);
+}
+.synth-pill.cooldown{
+  background:rgba(255, 42, 133, 0.15);
+  color:var(--neon-pink);
+  border-color:var(--neon-pink);
+}
+.synth-pill.off{
+  background:rgba(255,255,255,0.05);
+  color:var(--text-dim);
+  border-color:var(--text-dim);
+}
+
+.synth-empty{
+  text-align:center;
+  padding:36px;
+  font-family:'Righteous',cursive;
+  color:var(--text-dim);
+  font-size:15px;
+}
+
+@media(max-width:768px){
+  .synth-stats{grid-template-columns:1fr 1fr}
+  .synth-header{flex-direction:column;align-items:flex-start}
+  .synth-form{flex-direction:column}
+  .synth-field{width:100%}
+  .synth-table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="synth-sun"></div>
+<div class="horizon-grid"></div>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header class="synth-header">
+    <div class="brand-box">
+      <div class="brand-icon">⚡</div>
+      <div>
+        <div class="brand-title">Gemini Proxy // 1984</div>
+        <div class="brand-sub">NEON-ROUTING MULTI-KEY DISPATCH</div>
+      </div>
+    </div>
+    <button class="btn-synth-exit" onclick="logout()">DISCONNECT</button>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="synth-nav">
+    <button class="synth-nav-item active" onclick="showPanel('overview',this)">OVERVIEW</button>
+    <button class="synth-nav-item" onclick="showPanel('client-keys',this)">CLIENT KEYS</button>
+    <button class="synth-nav-item" onclick="showPanel('gemini-keys',this)">GEMINI KEYS</button>
+    <button class="synth-nav-item" onclick="showPanel('usage',this)">TELEMETRY MATRIX</button>
+  </nav>
+
+  <!-- Overview Panel -->
+  <div id="panel-overview" class="panel active">
+    <div class="synth-stats">
+      <div class="synth-card">
+        <div class="synth-card-label">Client Key Registry</div>
+        <div class="synth-card-val" id="ov-ck">—</div>
+      </div>
+      <div class="synth-card">
+        <div class="synth-card-label">Gemini Pool Size</div>
+        <div class="synth-card-val" id="ov-gk">—</div>
+      </div>
+      <div class="synth-card">
+        <div class="synth-card-label">Synced Models</div>
+        <div class="synth-card-val" id="ov-m">—</div>
+      </div>
+      <div class="synth-card">
+        <div class="synth-card-label">Requests Dispatched</div>
+        <div class="synth-card-val" id="ov-r">—</div>
+      </div>
+    </div>
+    <div class="hud-strip">
+      <div>[PACIFIC RESET] >> <span id="ov-reset">Calculating horizon...</span></div>
+      <div>[MODEL DISCOVERY] >> <span id="ov-mc">—</span></div>
+    </div>
+  </div>
+
+  <!-- Client Keys Panel -->
+  <div id="panel-client-keys" class="panel">
+    <div id="generatedClientKey" class="synth-key-alert"></div>
+    <div class="synth-section">
+      <h2 class="section-neon-title">CREATE CLIENT AUTHORIZATION KEY</h2>
+      <form id="clientKeyForm" class="synth-form">
+        <div class="synth-field">
+          <label class="synth-label">Key Descriptor / Node Label</label>
+          <input type="text" name="label" class="synth-input" placeholder="e.g. n8n-synth-flow" required>
+        </div>
+        <button type="submit" class="btn-neon-action">GENERATE KEY</button>
+      </form>
+    </div>
+    <div class="synth-section">
+      <h2 class="section-neon-title">ACTIVE CLIENT KEYS</h2>
+      <div class="synth-table-wrap">
+        <table class="synth-table">
+          <thead>
+            <tr><th>Label</th><th>Key Hash</th><th>State</th><th>Action</th></tr>
+          </thead>
+          <tbody id="clientKeysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Keys Panel -->
+  <div id="panel-gemini-keys" class="panel">
+    <div class="synth-section">
+      <h2 class="section-neon-title">ENROLL GEMINI API KEY</h2>
+      <form id="keyForm" class="synth-form">
+        <div class="synth-field">
+          <label class="synth-label">Pool Tag</label>
+          <input type="text" name="label" class="synth-input" placeholder="e.g. Cloud-Project-Miami" required>
+        </div>
+        <div class="synth-field" style="flex:2">
+          <label class="synth-label">API Secret Key</label>
+          <input type="password" name="key" class="synth-input" placeholder="AIzaSy..." required>
+        </div>
+        <button type="submit" class="btn-neon-action">ENROLL KEY</button>
+      </form>
+    </div>
+    <div class="synth-section">
+      <h2 class="section-neon-title">GEMINI ROUTING POOL</h2>
+      <div class="synth-table-wrap">
+        <table class="synth-table">
+          <thead>
+            <tr><th>Tag</th><th>Token Prefix</th><th>Status</th><th>Action</th></tr>
+          </thead>
+          <tbody id="keysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage Panel -->
+  <div id="panel-usage" class="panel">
+    <div class="hud-strip" style="margin-bottom:20px">
+      <div>[WINDOW] >> <span id="usage-reset">—</span></div>
+      <div>[LAST SYNC] >> <span id="usage-mc">—</span></div>
+    </div>
+    <div class="synth-section">
+      <h2 class="section-neon-title">MODEL USAGE & COOLDOWN MATRIX</h2>
+      <div class="synth-table-wrap">
+        <table class="synth-table">
+          <thead>
+            <tr><th>Target Model</th><th>Assigned Key</th><th>Requests (Today)</th><th>Last Signal</th><th>Condition</th></tr>
+          </thead>
+          <tbody id="usageTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...(opts.headers || {}) } });
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error?.message || d.error || 'Request failed');
+  return d;
+}
+
+async function copyText(v, btn) {
+  try { await navigator.clipboard.writeText(v); btn.textContent = 'COPIED!'; return; } catch {}
+  const t = document.createElement('textarea');
+  t.value = v; t.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(t); t.focus(); t.select();
+  document.execCommand('copy'); t.remove();
+  btn.textContent = 'COPIED!';
+}
+
+function showClientKey(key) {
+  const b = document.getElementById('generatedClientKey');
+  b.className = 'synth-key-alert visible';
+  b.innerHTML = `<div class="synth-alert-head">⚠️ SAVE THIS CLIENT KEY NOW (TRANSIENT DISPLAY)</div>
+    <code class="synth-key-code">${esc(key)}</code>
+    <button class="btn-neon-sm" onclick="copyText('${esc(key)}',this)">COPY KEY</button>`;
+}
+
+function badge(row) {
+  if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
+    return '<span class="synth-pill">READY</span>';
+  }
+  return `<span class="synth-pill cooldown">COOLDOWN (${esc(row.cooldown_reason || 'LIMIT')})</span>`;
+}
+
+function render(d) {
+  const totalReq = (d.usage || []).reduce((s, r) => s + (r.today || 0), 0);
+  const models = [...new Set((d.usage || []).map(r => r.model))];
+
+  document.getElementById('ov-ck').textContent = (d.clientKeys || []).length;
+  document.getElementById('ov-gk').textContent = (d.keys || []).length;
+  document.getElementById('ov-m').textContent = models.length;
+  document.getElementById('ov-r').textContent = totalReq;
+
+  const rst = d.resetTimezone ? `Pacific Midnight (${d.resetTimezone}) · Active since ${new Date(d.resetAt).toLocaleTimeString()}` : '';
+  const mc = d.modelsCheckedAt ? `${new Date(Number(d.modelsCheckedAt)).toLocaleString()}` : 'Not checked';
+
+  document.getElementById('ov-reset').textContent = rst;
+  document.getElementById('ov-mc').textContent = mc;
+  document.getElementById('usage-reset').textContent = rst;
+  document.getElementById('usage-mc').textContent = mc;
+
+  const ck = d.clientKeys || [];
+  document.getElementById('clientKeysTbody').innerHTML = ck.length
+    ? ck.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="synth-pill">ACTIVE</span>' : '<span class="synth-pill off">OFFLINE</span>'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn-neon-sm" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'PAUSE' : 'RESUME'}</button>
+            <button class="btn-neon-sm btn-neon-danger" onclick="deleteClientKey(${k.id})">DELETE</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="synth-empty">NO CLIENT KEYS REGISTERED</td></tr>';
+
+  const gk = d.keys || [];
+  document.getElementById('keysTbody').innerHTML = gk.length
+    ? gk.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="synth-pill">ROUTING</span>' : '<span class="synth-pill off">STANDBY</span>'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn-neon-sm" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'PAUSE' : 'RESUME'}</button>
+            <button class="btn-neon-sm btn-neon-danger" onclick="deleteKey(${k.id})">DELETE</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="synth-empty">NO GEMINI API KEYS ENROLLED</td></tr>';
+
+  const us = d.usage || [];
+  document.getElementById('usageTbody').innerHTML = us.length
+    ? us.map(row => `<tr>
+        <td><strong>${esc(row.model)}</strong></td>
+        <td>${esc(row.label)} <span style="color:var(--text-dim);font-size:11px">(${esc(row.masked)})</span></td>
+        <td style="font-family:'VT323',monospace;font-size:22px;color:var(--neon-cyan)">${row.today}</td>
+        <td style="color:var(--text-dim);font-size:12px">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
+        <td>${badge(row)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="synth-empty">NO TELEMETRY LOGGED IN THIS CYCLE</td></tr>';
+}
+
+function showPanel(n, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.synth-nav-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + n).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+async function load() {
+  try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+}
+
+document.getElementById('clientKeyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const d = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: new FormData(e.target).get('label') }) });
+    showClientKey(d.clientApiKey);
+    e.target.reset();
+    showPanel('client-keys', document.querySelectorAll('.synth-nav-item')[1]);
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+document.getElementById('keyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: f.get('label'), key: f.get('key') }) });
+    e.target.reset();
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+async function toggleClientKey(id, en) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteClientKey(id) { if (confirm('Delete client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
+async function toggleKey(id, en) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteKey(id) { if (confirm('Delete Gemini key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

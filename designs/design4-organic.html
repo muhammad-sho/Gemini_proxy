@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gemini Proxy — Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,700;1,9..40,400&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg: #f8f6f0;
+  --surface: #ffffff;
+  --surface-alt: #f1ede4;
+  --border: #e4decb;
+  --text-main: #2b2927;
+  --text-muted: #78736a;
+  --terracotta: #c86446;
+  --terracotta-dark: #ad4f34;
+  --terracotta-light: #faeee9;
+  --sage: #567d64;
+  --sage-light: #eaf1ec;
+  --sand: #dfd7c5;
+  --amber: #bd7922;
+  --amber-light: #fef6ec;
+  --shadow-soft: 0 10px 30px -5px rgba(66, 56, 43, 0.07), 0 4px 12px -2px rgba(66, 56, 43, 0.04);
+  --shadow-card: 0 16px 40px -10px rgba(71, 58, 42, 0.08);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'DM Sans',sans-serif;
+  background:var(--bg);
+  color:var(--text-main);
+  min-height:100vh;
+  position:relative;
+  line-height: 1.5;
+}
+
+/* Paper Grain Texture */
+body::after{
+  content:'';
+  position:fixed;
+  inset:0;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events:none;
+  z-index:9999;
+}
+
+.shell{max-width:1100px;margin:0 auto;padding:40px 24px 80px}
+
+/* Top Bar */
+.topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:32px;
+  background:var(--surface);
+  padding:18px 28px;
+  border-radius:24px;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-soft);
+}
+.brand{display:flex;align-items:center;gap:14px}
+.brand-leaf{
+  width:38px;height:38px;
+  background:var(--terracotta-light);
+  color:var(--terracotta);
+  border-radius:14px 4px 14px 4px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Fraunces',serif;
+  font-weight:700;
+  font-size:20px;
+}
+.brand-title{
+  font-family:'Fraunces',serif;
+  font-size:22px;
+  font-weight:600;
+  color:var(--text-main);
+  letter-spacing:-0.02em;
+}
+.brand-sub{font-size:12px;color:var(--text-muted);margin-top:-2px}
+
+.btn-signout{
+  font-family:'DM Sans',sans-serif;
+  font-size:13px;
+  font-weight:500;
+  padding:8px 18px;
+  border-radius:999px;
+  background:var(--surface-alt);
+  color:var(--text-main);
+  border:1px solid var(--border);
+  cursor:pointer;
+  transition:all .2s;
+}
+.btn-signout:hover{
+  background:var(--sand);
+}
+
+/* Nav Pills */
+.nav-pills{
+  display:flex;
+  gap:8px;
+  background:var(--surface-alt);
+  padding:6px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  margin-bottom:32px;
+  overflow-x:auto;
+}
+.nav-btn{
+  font-family:'DM Sans',sans-serif;
+  font-size:13px;
+  font-weight:500;
+  padding:10px 24px;
+  border-radius:999px;
+  border:none;
+  background:transparent;
+  color:var(--text-muted);
+  cursor:pointer;
+  transition:all .2s ease;
+  white-space:nowrap;
+}
+.nav-btn:hover{color:var(--text-main)}
+.nav-btn.active{
+  background:var(--surface);
+  color:var(--terracotta);
+  font-weight:700;
+  box-shadow:0 4px 12px rgba(0,0,0,0.04);
+}
+
+/* Panels */
+.panel{display:none;animation:softFade .4s cubic-bezier(0.16, 1, 0.3, 1)}
+.panel.active{display:block}
+@keyframes softFade{
+  from{opacity:0;transform:translateY(12px)}
+  to{opacity:1;transform:translateY(0)}
+}
+
+/* Stats Cards */
+.stats-container{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:18px;
+  margin-bottom:28px;
+}
+.stat-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:24px;
+  box-shadow:var(--shadow-soft);
+  position:relative;
+  overflow:hidden;
+}
+.stat-card::before{
+  content:'';
+  position:absolute;
+  top:0;left:0;right:0;height:4px;
+  background:var(--terracotta);
+  border-radius:4px 4px 0 0;
+  opacity:0.6;
+}
+.stat-label{
+  font-size:12px;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.06em;
+  color:var(--text-muted);
+  margin-bottom:8px;
+}
+.stat-num{
+  font-family:'Fraunces',serif;
+  font-size:42px;
+  font-weight:600;
+  color:var(--text-main);
+  line-height:1;
+}
+
+/* Meta Card */
+.meta-box{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:18px;
+  padding:16px 24px;
+  margin-bottom:24px;
+  font-size:13px;
+  color:var(--text-muted);
+  display:flex;
+  flex-wrap:wrap;
+  gap:24px;
+  box-shadow:var(--shadow-soft);
+}
+.meta-item{display:flex;align-items:center;gap:8px}
+.meta-dot{width:6px;height:6px;border-radius:50%;background:var(--sage)}
+
+/* Card Sections */
+.organic-card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:24px;
+  padding:32px;
+  margin-bottom:24px;
+  box-shadow:var(--shadow-card);
+}
+.card-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:20px;
+}
+.card-title{
+  font-family:'Fraunces',serif;
+  font-size:20px;
+  font-weight:600;
+  color:var(--text-main);
+}
+.card-desc{
+  font-size:13px;
+  color:var(--text-muted);
+  margin-top:4px;
+}
+
+/* Forms */
+.form-grid{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-end;
+  margin-top:16px;
+}
+.input-group{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1;
+  min-width:200px;
+}
+.input-label{
+  font-size:12px;
+  font-weight:600;
+  color:var(--text-muted);
+}
+.organic-input{
+  font-family:'DM Sans',sans-serif;
+  font-size:14px;
+  background:var(--bg);
+  border:1px solid var(--border);
+  border-radius:14px;
+  padding:12px 16px;
+  color:var(--text-main);
+  outline:none;
+  transition:all .2s;
+  width:100%;
+}
+.organic-input:focus{
+  border-color:var(--terracotta);
+  background:var(--surface);
+  box-shadow:0 0 0 3px var(--terracotta-light);
+}
+
+/* Buttons */
+.btn-terracotta{
+  font-family:'DM Sans',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  padding:13px 28px;
+  border-radius:999px;
+  background:var(--terracotta);
+  color:#fff;
+  border:none;
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.btn-terracotta:hover{
+  background:var(--terracotta-dark);
+  box-shadow:0 6px 16px rgba(200, 100, 70, 0.25);
+  transform:translateY(-1px);
+}
+.btn-sm-alt{
+  font-size:12px;
+  font-weight:600;
+  padding:6px 14px;
+  border-radius:999px;
+  background:var(--surface-alt);
+  color:var(--text-main);
+  border:1px solid var(--border);
+  cursor:pointer;
+  transition:all .2s;
+}
+.btn-sm-alt:hover{background:var(--sand)}
+.btn-sm-danger{
+  font-size:12px;
+  font-weight:600;
+  padding:6px 14px;
+  border-radius:999px;
+  background:var(--terracotta-light);
+  color:var(--terracotta-dark);
+  border:1px solid rgba(200, 100, 70, 0.2);
+  cursor:pointer;
+  transition:all .2s;
+}
+.btn-sm-danger:hover{
+  background:var(--terracotta);
+  color:#fff;
+}
+
+/* Key Box */
+.key-box-reveal{
+  display:none;
+  background:var(--terracotta-light);
+  border:1px dashed var(--terracotta);
+  border-radius:20px;
+  padding:20px;
+  margin-bottom:24px;
+  animation:softFade .3s ease;
+}
+.key-box-reveal.visible{display:block}
+.key-box-title{
+  font-weight:700;
+  font-size:13px;
+  color:var(--terracotta-dark);
+  margin-bottom:6px;
+}
+.key-snippet{
+  font-family:monospace;
+  background:var(--surface);
+  padding:10px 14px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  font-size:13px;
+  color:var(--text-main);
+  word-break:break-all;
+  margin:10px 0;
+}
+
+/* Tables */
+.table-responsive{overflow-x:auto}
+.clean-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+  text-align:left;
+}
+.clean-table th{
+  padding:12px 16px;
+  font-weight:600;
+  color:var(--text-muted);
+  border-bottom:1px solid var(--border);
+}
+.clean-table td{
+  padding:14px 16px;
+  border-bottom:1px solid var(--surface-alt);
+  vertical-align:middle;
+}
+.clean-table tr:hover td{
+  background:var(--bg);
+}
+.clean-table tr:last-child td{border-bottom:none}
+
+/* Badges */
+.badge-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:4px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+}
+.badge-ready{
+  background:var(--sage-light);
+  color:var(--sage);
+}
+.badge-cooldown{
+  background:var(--amber-light);
+  color:var(--amber);
+}
+.badge-off{
+  background:var(--surface-alt);
+  color:var(--text-muted);
+}
+
+.empty-state{
+  padding:40px;
+  text-align:center;
+  color:var(--text-muted);
+  font-style:italic;
+  font-family:'Fraunces',serif;
+  font-size:16px;
+}
+
+@media(max-width:700px){
+  .shell{padding:20px 16px 60px}
+  .topbar{flex-direction:column;gap:14px;align-items:flex-start}
+  .form-grid{flex-direction:column}
+  .input-group{width:100%}
+  .clean-table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-leaf">❦</div>
+      <div>
+        <div class="brand-title">Gemini Proxy</div>
+        <div class="brand-sub">Natural Key Routing</div>
+      </div>
+    </div>
+    <button class="btn-signout" onclick="logout()">Sign Out</button>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav-pills">
+    <button class="nav-btn active" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-btn" onclick="showPanel('client-keys',this)">Client Keys</button>
+    <button class="nav-btn" onclick="showPanel('gemini-keys',this)">Gemini Keys</button>
+    <button class="nav-btn" onclick="showPanel('usage',this)">Usage & Health</button>
+  </div>
+
+  <!-- Overview Panel -->
+  <div id="panel-overview" class="panel active">
+    <div class="stats-container">
+      <div class="stat-card">
+        <div class="stat-label">Client Keys</div>
+        <div class="stat-num" id="ov-ck">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Gemini Keys</div>
+        <div class="stat-num" id="ov-gk">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Models Available</div>
+        <div class="stat-num" id="ov-m">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Requests Today</div>
+        <div class="stat-num" id="ov-r">—</div>
+      </div>
+    </div>
+    <div class="meta-box">
+      <div class="meta-item"><span class="meta-dot"></span><span id="ov-reset">Loading schedule...</span></div>
+      <div class="meta-item"><span class="meta-dot"></span><span id="ov-mc">—</span></div>
+    </div>
+  </div>
+
+  <!-- Client Keys Panel -->
+  <div id="panel-client-keys" class="panel">
+    <div id="generatedClientKey" class="key-box-reveal"></div>
+    <div class="organic-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Generate Client Access Key</div>
+          <div class="card-desc">Generate an API key for n8n or external services.</div>
+        </div>
+      </div>
+      <form id="clientKeyForm" class="form-grid">
+        <div class="input-group">
+          <label class="input-label">Key Label / Workspace</label>
+          <input type="text" name="label" class="organic-input" placeholder="e.g. n8n-automation-flow" required>
+        </div>
+        <button type="submit" class="btn-terracotta">Generate Key</button>
+      </form>
+    </div>
+    <div class="organic-card">
+      <div class="card-header">
+        <div class="card-title">Configured Client Keys</div>
+      </div>
+      <div class="table-responsive">
+        <table class="clean-table">
+          <thead>
+            <tr><th>Label</th><th>Key Hash / Prefix</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="clientKeysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Keys Panel -->
+  <div id="panel-gemini-keys" class="panel">
+    <div class="organic-card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Add Gemini API Key</div>
+          <div class="card-desc">Add upstream Google Gemini keys for automatic round-robin routing.</div>
+        </div>
+      </div>
+      <form id="keyForm" class="form-grid">
+        <div class="input-group">
+          <label class="input-label">Account Label</label>
+          <input type="text" name="label" class="organic-input" placeholder="e.g. Google-Cloud-Project-A" required>
+        </div>
+        <div class="input-group" style="flex:2">
+          <label class="input-label">Gemini API Key</label>
+          <input type="password" name="key" class="organic-input" placeholder="AIzaSy..." required>
+        </div>
+        <button type="submit" class="btn-terracotta">Add Gemini Key</button>
+      </form>
+    </div>
+    <div class="organic-card">
+      <div class="card-header">
+        <div class="card-title">Registered Gemini Upstream Keys</div>
+      </div>
+      <div class="table-responsive">
+        <table class="clean-table">
+          <thead>
+            <tr><th>Label</th><th>Key Prefix</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="keysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage Panel -->
+  <div id="panel-usage" class="panel">
+    <div class="meta-box" style="margin-bottom:20px">
+      <div class="meta-item"><span class="meta-dot"></span><span id="usage-reset">—</span></div>
+      <div class="meta-item"><span class="meta-dot"></span><span id="usage-mc">—</span></div>
+    </div>
+    <div class="organic-card">
+      <div class="card-header">
+        <div class="card-title">Model Usage & Health Status</div>
+      </div>
+      <div class="table-responsive">
+        <table class="clean-table">
+          <thead>
+            <tr><th>Target Model</th><th>Gemini Upstream Key</th><th>Today's Requests</th><th>Last Request</th><th>Cooldown State</th></tr>
+          </thead>
+          <tbody id="usageTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...(opts.headers || {}) } });
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error?.message || d.error || 'Request failed');
+  return d;
+}
+
+async function copyText(v, btn) {
+  try { await navigator.clipboard.writeText(v); btn.textContent = 'Copied!'; return; } catch {}
+  const t = document.createElement('textarea');
+  t.value = v; t.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(t); t.focus(); t.select();
+  document.execCommand('copy'); t.remove();
+  btn.textContent = 'Copied!';
+}
+
+function showClientKey(key) {
+  const b = document.getElementById('generatedClientKey');
+  b.className = 'key-box-reveal visible';
+  b.innerHTML = `<div class="key-box-title">🌿 Important: Save your generated client key now.</div>
+    <div style="font-size:12px;color:var(--text-muted)">It will not be displayed again.</div>
+    <div class="key-snippet">${esc(key)}</div>
+    <button class="btn-sm-alt" onclick="copyText('${esc(key)}',this)">Copy to Clipboard</button>`;
+}
+
+function badge(row) {
+  if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
+    return '<span class="badge-pill badge-ready">Ready</span>';
+  }
+  return `<span class="badge-pill badge-cooldown">${esc(row.cooldown_reason || 'cooldown')} · until ${new Date(Number(row.cooldown_until)).toLocaleTimeString()}</span>`;
+}
+
+function render(d) {
+  const totalReq = (d.usage || []).reduce((s, r) => s + (r.today || 0), 0);
+  const models = [...new Set((d.usage || []).map(r => r.model))];
+
+  document.getElementById('ov-ck').textContent = (d.clientKeys || []).length;
+  document.getElementById('ov-gk').textContent = (d.keys || []).length;
+  document.getElementById('ov-m').textContent = models.length;
+  document.getElementById('ov-r').textContent = totalReq;
+
+  const rst = d.resetTimezone ? `Daily reset: midnight Pacific (${d.resetTimezone}) · Began ${new Date(d.resetAt).toLocaleTimeString()}` : '';
+  const mc = d.modelsCheckedAt ? `Models checked: ${new Date(Number(d.modelsCheckedAt)).toLocaleString()}` : 'Models not yet checked';
+  
+  document.getElementById('ov-reset').textContent = rst;
+  document.getElementById('ov-mc').textContent = mc;
+  document.getElementById('usage-reset').textContent = rst;
+  document.getElementById('usage-mc').textContent = mc;
+
+  const ck = d.clientKeys || [];
+  document.getElementById('clientKeysTbody').innerHTML = ck.length
+    ? ck.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="badge-pill badge-ready">Active</span>' : '<span class="badge-pill badge-off">Disabled</span>'}</td>
+        <td>
+          <div style="display:flex;gap:8px">
+            <button class="btn-sm-alt" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="btn-sm-danger" onclick="deleteClientKey(${k.id})">Delete</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">No client keys configured yet.</td></tr>';
+
+  const gk = d.keys || [];
+  document.getElementById('keysTbody').innerHTML = gk.length
+    ? gk.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="badge-pill badge-ready">Active</span>' : '<span class="badge-pill badge-off">Disabled</span>'}</td>
+        <td>
+          <div style="display:flex;gap:8px">
+            <button class="btn-sm-alt" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="btn-sm-danger" onclick="deleteKey(${k.id})">Delete</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="empty-state">Add a Gemini key to begin load balancing.</td></tr>';
+
+  const us = d.usage || [];
+  document.getElementById('usageTbody').innerHTML = us.length
+    ? us.map(row => `<tr>
+        <td><span style="font-weight:600;color:var(--terracotta-dark)">${esc(row.model)}</span></td>
+        <td>${esc(row.label)} <span style="color:var(--text-muted);font-size:12px">(${esc(row.masked)})</span></td>
+        <td style="font-family:'Fraunces',serif;font-size:18px;font-weight:600">${row.today}</td>
+        <td style="color:var(--text-muted);font-size:12px">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
+        <td>${badge(row)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="empty-state">No requests recorded in the current Pacific day window.</td></tr>';
+}
+
+function showPanel(n, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + n).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+async function load() {
+  try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+}
+
+document.getElementById('clientKeyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const d = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: new FormData(e.target).get('label') }) });
+    showClientKey(d.clientApiKey);
+    e.target.reset();
+    showPanel('client-keys', document.querySelectorAll('.nav-btn')[1]);
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+document.getElementById('keyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: f.get('label'), key: f.get('key') }) });
+    e.target.reset();
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+async function toggleClientKey(id, en) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
+async function toggleKey(id, en) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

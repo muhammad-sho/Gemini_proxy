@@ -1,64 +1,672 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Gemini Proxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#172033;background:#f5f7fb}
-    *{box-sizing:border-box}body{margin:0}.shell{max-width:1120px;margin:auto;padding:34px 20px 60px}
-    header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:24px}h1,h2,p{margin-top:0}h1{font-size:28px;letter-spacing:-.03em;margin-bottom:6px}h2{font-size:17px;margin-bottom:16px}.subtle,.muted{color:#667085;font-size:13px}
-    section{background:#fff;border:1px solid #e5e9f0;border-radius:14px;padding:22px;margin-top:16px;box-shadow:0 5px 18px #18202a08}
-    form{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}input,button{font:inherit;border:1px solid #d5dbe5;border-radius:8px;padding:9px 11px}input{min-width:180px}button{background:#1d2939;color:#fff;cursor:pointer}button:hover{background:#344054}.danger{background:#fff;color:#b42318;border-color:#f0b8b2}
-    table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #edf0f4;vertical-align:middle}th{color:#667085;font-weight:600}tr:last-child td{border-bottom:0}.badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:12px;background:#ecfdf3;color:#067647}.badge.cooldown{background:#fff4e5;color:#b54708}.empty{text-align:center;color:#667085;padding:24px}
-    .key-result{background:#fffaeb;border:1px solid #fedf89;border-radius:10px;padding:14px;margin:16px 0;word-break:break-all}.key-result code{display:block;margin:8px 0;color:#344054}
-    @media(max-width:700px){header{display:block}table{display:block;overflow-x:auto;white-space:nowrap}form input{width:100%}}
+    :root[data-theme="light"] {
+      --bg: #f8fafc;
+      --surface: #ffffff;
+      --surface-alt: #f1f5f9;
+      --border: #e2e8f0;
+      --border-strong: #0f172a;
+      --text: #0f172a;
+      --text-dim: #475569;
+      --text-muted: #64748b;
+      --emerald: #059669;
+      --emerald-bg: #ecfdf5;
+      --amber: #d97706;
+      --amber-bg: #fffbeb;
+      --rose: #dc2626;
+      --rose-bg: #fef2f2;
+      --input-bg: #ffffff;
+      --input-border: #cbd5e1;
+      --btn-primary-bg: #0f172a;
+      --btn-primary-text: #ffffff;
+      --btn-primary-hover: #334155;
+      --shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #0b0f17;
+      --surface: #111827;
+      --surface-alt: #1a2234;
+      --border: #1f293d;
+      --border-strong: #ffffff;
+      --text: #f9fafb;
+      --text-dim: #94a3b8;
+      --text-muted: #64748b;
+      --emerald: #10b981;
+      --emerald-bg: rgba(16, 185, 129, 0.15);
+      --amber: #f59e0b;
+      --amber-bg: rgba(245, 158, 11, 0.15);
+      --rose: #f43f5e;
+      --rose-bg: rgba(244, 63, 94, 0.15);
+      --input-bg: #090d16;
+      --input-border: #1f293d;
+      --btn-primary-bg: #ffffff;
+      --btn-primary-text: #000000;
+      --btn-primary-hover: #e2e8f0;
+      --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .shell { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+
+    /* Header */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 16px;
+      box-shadow: var(--shadow);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-badge {
+      width: 36px; height: 36px;
+      background: var(--border-strong);
+      color: var(--bg);
+      border-radius: 8px;
+      font-weight: 800;
+      font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .brand-title { font-size: 18px; font-weight: 800; letter-spacing: -0.02em; color: var(--text); }
+    .brand-sub { font-size: 12px; color: var(--text-dim); }
+
+    .header-actions { display: flex; align-items: center; gap: 10px; }
+    .btn-header {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-header:hover { background: var(--surface-alt); border-color: var(--text-muted); }
+
+    /* Nav Tabs */
+    .nav-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+    }
+    .nav-tab {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: var(--surface);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .nav-tab:hover { color: var(--text); border-color: var(--text-muted); }
+    .nav-tab.active {
+      background: var(--border-strong);
+      color: var(--bg);
+      border-color: var(--border-strong);
+    }
+
+    /* Panels */
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Metrics */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+    .metric-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }
+    .metric-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+    .metric-val {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+    }
+
+    /* Notice Banner */
+    .info-strip {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      font-size: 13px;
+      color: var(--text-dim);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .info-strip strong { color: var(--text); }
+
+    /* Section Cards */
+    .section-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: var(--shadow);
+    }
+    .section-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+    .section-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: -8px;
+      margin-bottom: 16px;
+    }
+
+    /* Forms */
+    .form-flex {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .field-col {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex: 1;
+      min-width: 180px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-dim);
+    }
+    .form-input {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-size: 14px;
+      background: var(--input-bg);
+      border: 1px solid var(--input-border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s ease;
+      width: 100%;
+    }
+    .form-input:focus {
+      border-color: var(--border-strong);
+    }
+
+    .btn-primary {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 11px 20px;
+      border-radius: 8px;
+      background: var(--btn-primary-bg);
+      color: var(--btn-primary-text);
+      border: 1px solid var(--btn-primary-bg);
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-primary:hover {
+      background: var(--btn-primary-hover);
+      border-color: var(--btn-primary-hover);
+    }
+
+    /* One-Time Key Banner */
+    .key-alert {
+      display: none;
+      background: var(--amber-bg);
+      border: 1px solid var(--amber);
+      border-radius: 10px;
+      padding: 18px;
+      margin-bottom: 24px;
+    }
+    .key-alert.visible { display: block; }
+    .key-alert-head {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--amber);
+      margin-bottom: 4px;
+    }
+    .key-alert-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      padding: 10px 12px;
+      border-radius: 6px;
+      display: block;
+      color: var(--text);
+      word-break: break-all;
+      margin: 10px 0;
+    }
+
+    /* Table */
+    .table-wrap { overflow-x: auto; }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .data-table th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-alt);
+    }
+    .data-table td {
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .data-table tr:last-child td { border-bottom: none; }
+    .data-table tr:hover td { background: var(--surface-alt); }
+
+    /* Badges */
+    .status-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+    .tag-ready { background: var(--emerald-bg); color: var(--emerald); }
+    .tag-cooldown { background: var(--amber-bg); color: var(--amber); }
+    .tag-off { background: var(--surface-alt); color: var(--text-muted); }
+
+    .btn-tbl {
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 12px;
+      border-radius: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      cursor: pointer;
+      margin-right: 6px;
+      transition: all 0.15s ease;
+    }
+    .btn-tbl:hover { background: var(--surface-alt); border-color: var(--text-muted); }
+    .btn-tbl-danger { color: var(--rose); border-color: var(--rose); }
+    .btn-tbl-danger:hover { background: var(--rose-bg); }
+
+    .empty-notice {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    @media (max-width: 768px) {
+      .metrics-grid { grid-template-columns: 1fr 1fr; }
+      .form-flex { flex-direction: column; }
+      .field-col { width: 100%; }
+      .data-table { display: block; overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
-<main class="shell">
-  <header><div><h1>Gemini Proxy</h1><p class="subtle">Key routing and current-day usage</p></div></header>
-  <div id="generatedClientKey"></div>
-  <section>
-    <h2>Client access keys</h2>
-    <form id="clientKeyForm"><input name="label" placeholder="Label" required><button>Generate client key</button></form>
-    <table id="clientKeys"></table>
-    <p class="muted">Use a client key in n8n. The full value is shown only when it is generated.</p>
-  </section>
-  <section>
-    <h2>Gemini API keys</h2>
-    <form id="keyForm"><input name="label" placeholder="Label" required><input name="key" placeholder="Gemini API key" required size="35"><button>Add Gemini key</button></form>
-    <table id="keys"></table>
-  </section>
-  <section>
-    <h2>Usage and cooldowns</h2>
-    <p id="reset" class="muted"></p>
-    <p id="modelsChecked" class="muted"></p>
-    <table id="usage"></table>
-  </section>
-</main>
+<div class="shell">
+
+  <!-- Header -->
+  <header class="header">
+    <div class="brand">
+      <div class="brand-badge">GP</div>
+      <div>
+        <h1 class="brand-title">Gemini Proxy</h1>
+        <p class="brand-sub">High-Contrast Key Routing Control Plane</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn-header" id="themeToggleBtn" onclick="toggleTheme()">🌙 Dark Mode</button>
+      <button class="btn-header" onclick="logout()">Sign Out</button>
+    </div>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="nav-row">
+    <button class="nav-tab active" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-tab" onclick="showPanel('client-keys',this)">Client Keys</button>
+    <button class="nav-tab" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
+  </nav>
+
+  <!-- Overview Panel -->
+  <div id="panel-overview" class="panel active">
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Client Keys</div>
+        <div class="metric-val" id="ov-ck">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Gemini Keys</div>
+        <div class="metric-val" id="ov-gk">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Discovered Models</div>
+        <div class="metric-val" id="ov-m">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Requests Today</div>
+        <div class="metric-val" id="ov-r">—</div>
+      </div>
+    </div>
+    <div class="info-strip">
+      <div><strong>Reset Schedule:</strong> <span id="ov-reset">Loading schedule...</span></div>
+      <div><strong>Model Sync:</strong> <span id="ov-mc">—</span></div>
+    </div>
+  </div>
+
+  <!-- Client Keys Panel -->
+  <div id="panel-client-keys" class="panel">
+    <div id="generatedClientKey" class="key-alert"></div>
+    <div class="section-box">
+      <h2 class="section-title">Generate Client Key</h2>
+      <p class="section-desc">Generate an API key for n8n or external services. The full value is displayed only once.</p>
+      <form id="clientKeyForm" class="form-flex">
+        <div class="field-col">
+          <label class="field-label">Key Label / Service Name</label>
+          <input type="text" name="label" class="form-input" placeholder="e.g. n8n-automation-flow" required>
+        </div>
+        <button type="submit" class="btn-primary">Generate Key</button>
+      </form>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Active Client Keys</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Label</th><th>Key Prefix</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="clientKeysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Keys Panel -->
+  <div id="panel-gemini-keys" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Add Gemini API Key</h2>
+      <p class="section-desc">Add upstream Google Gemini keys for automatic round-robin and least-used routing.</p>
+      <form id="keyForm" class="form-flex">
+        <div class="field-col">
+          <label class="field-label">Account Label</label>
+          <input type="text" name="label" class="form-input" placeholder="e.g. Google-Account-01" required>
+        </div>
+        <div class="field-col" style="flex:2">
+          <label class="field-label">Gemini API Key</label>
+          <input type="password" name="key" class="form-input" placeholder="AIzaSy..." required>
+        </div>
+        <button type="submit" class="btn-primary">Add Key</button>
+      </form>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Configured Gemini Keys</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Label</th><th>Key Prefix</th><th>Status</th><th>Actions</th></tr>
+          </thead>
+          <tbody id="keysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage Panel -->
+  <div id="panel-usage" class="panel">
+    <div class="info-strip" style="margin-bottom:20px">
+      <div><strong>Reset Schedule:</strong> <span id="usage-reset">—</span></div>
+      <div><strong>Last Model Sync:</strong> <span id="usage-mc">—</span></div>
+    </div>
+    <div class="section-box">
+      <h2 class="section-title">Model Usage & Cooldown Status</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Model</th><th>Gemini Key</th><th>Requests Today</th><th>Last Request</th><th>State</th></tr>
+          </thead>
+          <tbody id="usageTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
 <script>
-  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
-  async function api(url, options = {}) { const response = await fetch(url,{...options,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf(),...(options.headers||{})}}); const data = await response.json(); if (!response.ok) throw Error(data.error?.message || data.error || 'Request failed'); return data; }
-  async function copyText(value, button) { let copied=false; try { if (navigator.clipboard) { await navigator.clipboard.writeText(value); copied=true; } } catch {} if (!copied) { const input=document.createElement('textarea'); input.value=value; input.style.position='fixed'; input.style.opacity='0'; document.body.appendChild(input); input.focus(); input.select(); copied=document.execCommand('copy'); input.remove(); } button.textContent=copied?'Copied':'Copy failed - select manually'; }
-  function showClientKey(key) { const box=document.querySelector('#generatedClientKey'); box.className='key-result'; box.replaceChildren(); const title=document.createElement('strong'); title.textContent='Save this client key now. It will not be shown again.'; const value=document.createElement('code'); value.textContent=key; const button=document.createElement('button'); button.type='button'; button.textContent='Copy key'; button.onclick=()=>copyText(key,button); box.append(title,value,button); }
-  function cooldown(row) { if (!row.cooldown_until || Number(row.cooldown_until)<=Date.now()) return '<span class="badge">Ready</span>'; const reason=esc(row.cooldown_reason||'temporary'); return `<span class="badge cooldown">${reason}<br>until ${new Date(Number(row.cooldown_until)).toLocaleString()}</span>`; }
-  function render(data) {
-    document.querySelector('#clientKeys').innerHTML='<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>'+ (data.clientKeys.length?data.clientKeys.map((key)=>`<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleClientKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button class="danger" onclick="deleteClientKey(${key.id})">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">No client keys.</td></tr>');
-    document.querySelector('#keys').innerHTML='<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>'+ (data.keys.length?data.keys.map((key)=>`<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button class="danger" onclick="deleteKey(${key.id})">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">Add a Gemini API key to begin routing.</td></tr>');
-    document.querySelector('#usage').innerHTML='<tr><th>Model</th><th>Gemini key</th><th>Successful requests today</th><th>Last success</th><th>State</th></tr>'+ (data.usage.length?data.usage.map((row)=>`<tr><td>${esc(row.model)}</td><td>${esc(row.label)} (${esc(row.masked)})</td><td>${row.today}</td><td>${row.last_request?new Date(row.last_request).toLocaleString():'-'}</td><td>${cooldown(row)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No usage or active cooldowns in the current day.</td></tr>');
-    document.querySelector('#reset').textContent='Current day resets at midnight Pacific Time ('+data.resetTimezone+'). Window began '+new Date(data.resetAt).toLocaleString()+'.';
-    document.querySelector('#modelsChecked').textContent=data.modelsCheckedAt?'Last Gemini model check: '+new Date(Number(data.modelsCheckedAt)).toLocaleString():'Models have not been checked yet.';
+
+  // Theme Management
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('gemini_proxy_theme', theme);
+    const btn = document.getElementById('themeToggleBtn');
+    if (btn) btn.innerHTML = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
   }
-  async function load(){try{render(await api('/api/admin/state'));}catch(error){alert(error.message);}}
-  document.querySelector('#clientKeyForm').onsubmit=async(event)=>{event.preventDefault();try{const form=new FormData(event.target);const data=await api('/api/admin/client-keys',{method:'POST',body:JSON.stringify({label:form.get('label')})});showClientKey(data.clientApiKey);event.target.reset();load();}catch(error){alert(error.message);}};
-  document.querySelector('#keyForm').onsubmit=async(event)=>{event.preventDefault();try{const form=new FormData(event.target);await api('/api/admin/keys',{method:'POST',body:JSON.stringify({label:form.get('label'),key:form.get('key')})});event.target.reset();load();}catch(error){alert(error.message);}};
-  async function toggleClientKey(id,enabled){await api('/api/admin/client-keys/'+id,{method:'PATCH',body:JSON.stringify({enabled})});load();}
-  async function deleteClientKey(id){if(confirm('Delete this client key?')){await api('/api/admin/client-keys/'+id,{method:'DELETE'});load();}}
-  async function toggleKey(id,enabled){await api('/api/admin/keys/'+id,{method:'PATCH',body:JSON.stringify({enabled})});load();}
-  async function deleteKey(id){if(confirm('Delete this Gemini API key?')){await api('/api/admin/keys/'+id,{method:'DELETE'});load();}}
-  load();setInterval(load,10000);
+
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute('data-theme') || 'light';
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  }
+
+  const savedTheme = localStorage.getItem('gemini_proxy_theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  applyTheme(savedTheme);
+
+  async function api(url, options = {}) {
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf(),
+        ...(options.headers || {})
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) throw Error(data.error?.message || data.error || 'Request failed');
+    return data;
+  }
+
+  async function copyText(value, button) {
+    let copied = false;
+    try {
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(value);
+        copied = true;
+      }
+    } catch {}
+    if (!copied) {
+      const input = document.createElement('textarea');
+      input.value = value;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      copied = document.execCommand('copy');
+      input.remove();
+    }
+    button.textContent = copied ? 'Copied!' : 'Copy failed';
+  }
+
+  function showClientKey(key) {
+    const box = document.getElementById('generatedClientKey');
+    box.className = 'key-alert visible';
+    box.innerHTML = `<div class="key-alert-head">Important: Save this client key now</div>
+      <div style="font-size:12px;color:var(--text-dim)">This key will not be displayed again.</div>
+      <code class="key-alert-code">${esc(key)}</code>
+      <button class="btn-tbl" onclick="copyText('${esc(key)}',this)">Copy Key</button>`;
+  }
+
+  function cooldown(row) {
+    if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
+      return '<span class="status-tag tag-ready">Ready</span>';
+    }
+    const reason = esc(row.cooldown_reason || 'quota');
+    return `<span class="status-tag tag-cooldown">Cooldown (${reason})</span>`;
+  }
+
+  function render(data) {
+    const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
+    const models = [...new Set((data.usage || []).map(r => r.model))];
+
+    document.getElementById('ov-ck').textContent = (data.clientKeys || []).length;
+    document.getElementById('ov-gk').textContent = (data.keys || []).length;
+    document.getElementById('ov-m').textContent = models.length;
+    document.getElementById('ov-r').textContent = totalReq;
+
+    const rst = data.resetTimezone
+      ? `Midnight Pacific (${data.resetTimezone}) · Began ${new Date(data.resetAt).toLocaleTimeString()}`
+      : '';
+    const mc = data.modelsCheckedAt
+      ? `${new Date(Number(data.modelsCheckedAt)).toLocaleString()}`
+      : 'Not checked yet';
+
+    document.getElementById('ov-reset').textContent = rst;
+    document.getElementById('ov-mc').textContent = mc;
+    document.getElementById('usage-reset').textContent = rst;
+    document.getElementById('usage-mc').textContent = mc;
+
+    const ck = data.clientKeys || [];
+    document.getElementById('clientKeysTbody').innerHTML = ck.length
+      ? ck.map(k => `<tr>
+          <td><strong>${esc(k.label)}</strong></td>
+          <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
+          <td>${k.enabled ? '<span class="status-tag tag-ready">Active</span>' : '<span class="status-tag tag-off">Disabled</span>'}</td>
+          <td>
+            <button class="btn-tbl" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty-notice">No client keys configured.</td></tr>';
+
+    const gk = data.keys || [];
+    document.getElementById('keysTbody').innerHTML = gk.length
+      ? gk.map(k => `<tr>
+          <td><strong>${esc(k.label)}</strong></td>
+          <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
+          <td>${k.enabled ? '<span class="status-tag tag-ready">Active</span>' : '<span class="status-tag tag-off">Disabled</span>'}</td>
+          <td>
+            <button class="btn-tbl" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
+            <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Delete</button>
+          </td>
+        </tr>`).join('')
+      : '<tr><td colspan="4" class="empty-notice">No Gemini API keys configured.</td></tr>';
+
+    const us = data.usage || [];
+    document.getElementById('usageTbody').innerHTML = us.length
+      ? us.map(row => `<tr>
+          <td><strong>${esc(row.model)}</strong></td>
+          <td>${esc(row.label)} <span style="color:var(--text-dim)">(${esc(row.masked)})</span></td>
+          <td style="font-weight:700;font-size:15px">${row.today}</td>
+          <td style="color:var(--text-dim)">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
+          <td>${cooldown(row)}</td>
+        </tr>`).join('')
+      : '<tr><td colspan="5" class="empty-notice">No requests recorded in the current day window.</td></tr>';
+  }
+
+  function showPanel(name, tabEl) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    const target = document.getElementById('panel-' + name);
+    if (target) target.classList.add('active');
+    if (tabEl) tabEl.classList.add('active');
+  }
+
+  async function load() {
+    try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+  }
+
+  document.getElementById('clientKeyForm').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(event.target);
+      const data = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: form.get('label') }) });
+      showClientKey(data.clientApiKey);
+      event.target.reset();
+      showPanel('client-keys', document.querySelectorAll('.nav-tab')[1]);
+      load();
+    } catch (err) { alert(err.message); }
+  };
+
+  document.getElementById('keyForm').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(event.target);
+      await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: form.get('key') }) });
+      event.target.reset();
+      load();
+    } catch (err) { alert(err.message); }
+  };
+
+  async function toggleClientKey(id, enabled) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) }); load(); }
+  async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
+  async function toggleKey(id, enabled) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) }); load(); }
+  async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+  async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+
+  load();
+  setInterval(load, 10000);
 </script>
 </body>
 </html>

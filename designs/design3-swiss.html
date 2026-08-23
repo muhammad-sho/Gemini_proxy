@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEMINI PROXY / SCHWEIZ 60</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;600;700;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-white: #ffffff;
+  --bg-subtle: #f4f4f2;
+  --ink-pure: #0a0a0a;
+  --ink-muted: #6e6e6e;
+  --swiss-red: #ff3300;
+  --grid-line: #0a0a0a;
+  --line-light: #e0e0de;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Epilogue',sans-serif;
+  background:var(--bg-white);
+  color:var(--ink-pure);
+  min-height:100vh;
+  letter-spacing:-0.02em;
+}
+
+.shell{
+  max-width:1160px;
+  margin:0 auto;
+  border-left:2px solid var(--ink-pure);
+  border-right:2px solid var(--ink-pure);
+  min-height:100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+/* Swiss Asymmetric Poster Header */
+.swiss-header{
+  display:grid;
+  grid-template-columns: 2fr 1fr;
+  border-bottom:2px solid var(--ink-pure);
+}
+.header-left{
+  padding:36px 32px;
+  border-right:2px solid var(--ink-pure);
+}
+.header-tag{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  font-weight:700;
+  color:var(--swiss-red);
+  text-transform:uppercase;
+  letter-spacing:0.15em;
+  margin-bottom:12px;
+}
+.header-title{
+  font-size:clamp(32px, 5vw, 60px);
+  font-weight:900;
+  line-height:0.95;
+  text-transform:uppercase;
+  letter-spacing:-0.04em;
+}
+.header-right{
+  padding:36px 28px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  background:var(--bg-subtle);
+}
+.header-meta-list{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  color:var(--ink-muted);
+  line-height:1.8;
+}
+.header-meta-list strong{color:var(--ink-pure)}
+.btn-swiss-exit{
+  font-family:'Epilogue',sans-serif;
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+  padding:10px 18px;
+  background:var(--ink-pure);
+  color:#fff;
+  border:none;
+  cursor:pointer;
+  align-self:flex-start;
+  transition:background .15s;
+}
+.btn-swiss-exit:hover{background:var(--swiss-red)}
+
+/* Swiss Grid Navigation */
+.swiss-nav{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  border-bottom:2px solid var(--ink-pure);
+  background:var(--bg-white);
+}
+.nav-tab-swiss{
+  font-family:'Epilogue',sans-serif;
+  font-size:13px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  padding:16px 20px;
+  border:none;
+  background:transparent;
+  border-right:2px solid var(--ink-pure);
+  color:var(--ink-muted);
+  cursor:pointer;
+  text-align:left;
+  transition:all .15s;
+  position:relative;
+}
+.nav-tab-swiss:last-child{border-right:none}
+.nav-tab-swiss:hover{background:var(--bg-subtle);color:var(--ink-pure)}
+.nav-tab-swiss.active{
+  background:var(--swiss-red);
+  color:#fff;
+}
+.nav-tab-swiss span{
+  display:block;
+  font-family:'Space Mono',monospace;
+  font-size:10px;
+  opacity:0.75;
+  margin-bottom:2px;
+}
+
+/* Panels */
+.main-content{flex-grow:1}
+.panel{display:none}
+.panel.active{display:block}
+
+/* Section Row Blocks */
+.swiss-row{
+  display:grid;
+  grid-template-columns: 280px 1fr;
+  border-bottom:2px solid var(--ink-pure);
+}
+.swiss-row-label{
+  padding:28px 24px;
+  border-right:2px solid var(--ink-pure);
+  background:var(--bg-subtle);
+}
+.row-index{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  font-weight:700;
+  color:var(--swiss-red);
+  margin-bottom:6px;
+}
+.row-title{
+  font-size:20px;
+  font-weight:900;
+  text-transform:uppercase;
+  line-height:1.1;
+}
+.row-desc{
+  font-size:12px;
+  color:var(--ink-muted);
+  margin-top:8px;
+  line-height:1.5;
+}
+.swiss-row-body{padding:28px 32px}
+
+/* Overview 4-Square Grid */
+.swiss-quad{
+  display:grid;
+  grid-template-columns:repeat(4, 1fr);
+  border-bottom:2px solid var(--ink-pure);
+}
+.quad-cell{
+  padding:32px 24px;
+  border-right:2px solid var(--ink-pure);
+}
+.quad-cell:last-child{border-right:none}
+.quad-num{
+  font-size:64px;
+  font-weight:900;
+  line-height:1;
+  color:var(--ink-pure);
+  margin-bottom:8px;
+}
+.quad-label{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  color:var(--ink-muted);
+}
+
+/* Meta Notice */
+.swiss-meta-strip{
+  padding:16px 32px;
+  background:var(--bg-subtle);
+  border-bottom:2px solid var(--ink-pure);
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:32px;
+}
+.swiss-meta-strip strong{color:var(--swiss-red)}
+
+/* Forms */
+.swiss-form{
+  display:flex;
+  flex-wrap:wrap;
+  gap:16px;
+  align-items:flex-end;
+}
+.swiss-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1;
+  min-width:200px;
+}
+.swiss-field label{
+  font-family:'Space Mono',monospace;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+}
+.swiss-input{
+  font-family:'Epilogue',sans-serif;
+  font-size:14px;
+  background:var(--bg-white);
+  border:2px solid var(--ink-pure);
+  padding:12px 14px;
+  color:var(--ink-pure);
+  outline:none;
+  border-radius:0;
+}
+.swiss-input:focus{
+  border-color:var(--swiss-red);
+}
+
+.btn-swiss-action{
+  font-family:'Epilogue',sans-serif;
+  font-size:13px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.04em;
+  padding:14px 28px;
+  background:var(--swiss-red);
+  color:#fff;
+  border:2px solid var(--swiss-red);
+  cursor:pointer;
+  transition:all .15s;
+  white-space:nowrap;
+}
+.btn-swiss-action:hover{
+  background:var(--ink-pure);
+  border-color:var(--ink-pure);
+}
+
+/* Key Alert Callout */
+.swiss-key-alert{
+  display:none;
+  background:var(--bg-subtle);
+  border:2px solid var(--swiss-red);
+  padding:20px;
+  margin-bottom:24px;
+}
+.swiss-key-alert.visible{display:block}
+.swiss-alert-head{
+  font-family:'Space Mono',monospace;
+  font-size:11px;
+  font-weight:700;
+  color:var(--swiss-red);
+  text-transform:uppercase;
+  margin-bottom:6px;
+}
+.swiss-key-code{
+  font-family:'Space Mono',monospace;
+  font-size:13px;
+  background:#fff;
+  border:1px solid var(--ink-pure);
+  padding:10px;
+  display:block;
+  margin:10px 0;
+  word-break:break-all;
+}
+
+/* Swiss Tables */
+.swiss-table-wrap{overflow-x:auto}
+.swiss-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:13px;
+}
+.swiss-table th{
+  text-align:left;
+  font-family:'Space Mono',monospace;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+  color:var(--ink-muted);
+  border-bottom:2px solid var(--ink-pure);
+  padding:12px 14px;
+}
+.swiss-table td{
+  padding:14px;
+  border-bottom:1px solid var(--line-light);
+  vertical-align:middle;
+}
+.swiss-table tr:hover td{background:var(--bg-subtle)}
+
+/* Tag Badges */
+.swiss-tag{
+  font-family:'Space Mono',monospace;
+  font-size:10px;
+  font-weight:700;
+  text-transform:uppercase;
+  padding:2px 8px;
+  border:1px solid var(--ink-pure);
+  display:inline-block;
+}
+.swiss-tag.live{background:var(--ink-pure);color:#fff}
+.swiss-tag.cooldown{background:var(--swiss-red);color:#fff;border-color:var(--swiss-red)}
+.swiss-tag.off{background:#fff;color:var(--ink-muted);border-color:var(--line-light)}
+
+.btn-tbl{
+  font-family:'Epilogue',sans-serif;
+  font-size:11px;
+  font-weight:700;
+  text-transform:uppercase;
+  padding:4px 10px;
+  border:1px solid var(--ink-pure);
+  background:transparent;
+  cursor:pointer;
+  margin-right:4px;
+}
+.btn-tbl:hover{background:var(--ink-pure);color:#fff}
+.btn-tbl-danger{color:var(--swiss-red);border-color:var(--swiss-red)}
+.btn-tbl-danger:hover{background:var(--swiss-red);color:#fff}
+
+.swiss-empty{
+  text-align:center;
+  padding:40px;
+  font-family:'Space Mono',monospace;
+  font-size:12px;
+  color:var(--ink-muted);
+}
+
+@media(max-width:768px){
+  .swiss-header{grid-template-columns:1fr}
+  .header-left{border-right:none;border-bottom:2px solid var(--ink-pure)}
+  .swiss-nav{grid-template-columns:1fr 1fr}
+  .swiss-nav-tab:nth-child(2){border-right:none}
+  .swiss-quad{grid-template-columns:1fr 1fr}
+  .quad-cell:nth-child(2){border-right:none}
+  .swiss-row{grid-template-columns:1fr}
+  .swiss-row-label{border-right:none;border-bottom:2px solid var(--ink-pure)}
+  .swiss-form{flex-direction:column}
+  .swiss-field{width:100%}
+  .swiss-table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <!-- Header -->
+  <header class="swiss-header">
+    <div class="header-left">
+      <div class="header-tag">SYSTEM / APPARAT 01</div>
+      <h1 class="header-title">Gemini Proxy<br>Router</h1>
+    </div>
+    <div class="header-right">
+      <div class="header-meta-list">
+        <div>STANDARD: <strong>DIN-GEMINI-89</strong></div>
+        <div>ALGORITHM: <strong>LEAST-USED FIRST</strong></div>
+        <div>STATUS: <strong>BEREIT (ONLINE)</strong></div>
+      </div>
+      <button class="btn-swiss-exit" onclick="logout()">BEENDEN / LOGOUT</button>
+    </div>
+  </header>
+
+  <!-- Navigation -->
+  <nav class="swiss-nav">
+    <button class="nav-tab-swiss active" onclick="showPanel('overview',this)"><span>TAB 01</span>ÜBERSICHT / OVERVIEW</button>
+    <button class="nav-tab-swiss" onclick="showPanel('client-keys',this)"><span>TAB 02</span>CLIENT-SCHLÜSSEL</button>
+    <button class="nav-tab-swiss" onclick="showPanel('gemini-keys',this)"><span>TAB 03</span>GEMINI UPSTREAMS</button>
+    <button class="nav-tab-swiss" onclick="showPanel('usage',this)"><span>TAB 04</span>NUTZUNG & COOLDOWN</button>
+  </nav>
+
+  <div class="main-content">
+
+    <!-- Overview Panel -->
+    <div id="panel-overview" class="panel active">
+      <div class="swiss-quad">
+        <div class="quad-cell">
+          <div class="quad-num" id="ov-ck">—</div>
+          <div class="quad-label">Client Keys Issued</div>
+        </div>
+        <div class="quad-cell">
+          <div class="quad-num" id="ov-gk">—</div>
+          <div class="quad-label">Gemini Keys In Pool</div>
+        </div>
+        <div class="quad-cell">
+          <div class="quad-num" id="ov-m">—</div>
+          <div class="quad-label">Cataloged Models</div>
+        </div>
+        <div class="quad-cell">
+          <div class="quad-num" id="ov-r">—</div>
+          <div class="quad-label">Daily Transmissions</div>
+        </div>
+      </div>
+      <div class="swiss-meta-strip">
+        <div>PACIFIC RESET: <strong id="ov-reset">Laden...</strong></div>
+        <div>MODEL REFRESH: <strong id="ov-mc">—</strong></div>
+      </div>
+    </div>
+
+    <!-- Client Keys Panel -->
+    <div id="panel-client-keys" class="panel">
+      <div id="generatedClientKey" class="swiss-key-alert" style="margin:24px 32px 0"></div>
+      
+      <div class="swiss-row">
+        <div class="swiss-row-label">
+          <div class="row-index">SECTION 01</div>
+          <div class="row-title">Create Client Key</div>
+          <div class="row-desc">Generate access tokens for external workflows (e.g. n8n).</div>
+        </div>
+        <div class="swiss-row-body">
+          <form id="clientKeyForm" class="swiss-form">
+            <div class="swiss-field">
+              <label>Service Identifier / Label</label>
+              <input type="text" name="label" class="swiss-input" placeholder="e.g. n8n-automation-cluster" required>
+            </div>
+            <button type="submit" class="btn-swiss-action">Generate Key</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="swiss-row">
+        <div class="swiss-row-label">
+          <div class="row-index">SECTION 02</div>
+          <div class="row-title">Active Keys</div>
+          <div class="row-desc">Current inventory of granted access credentials.</div>
+        </div>
+        <div class="swiss-row-body" style="padding:0">
+          <div class="swiss-table-wrap">
+            <table class="swiss-table">
+              <thead>
+                <tr><th>Label</th><th>Token Fragment</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="clientKeysTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gemini Keys Panel -->
+    <div id="panel-gemini-keys" class="panel">
+      <div class="swiss-row">
+        <div class="swiss-row-label">
+          <div class="row-index">SECTION 01</div>
+          <div class="row-title">Enroll Upstream Key</div>
+          <div class="row-desc">Add upstream Google Gemini credentials for load balancing.</div>
+        </div>
+        <div class="swiss-row-body">
+          <form id="keyForm" class="swiss-form">
+            <div class="swiss-field">
+              <label>Account Tag</label>
+              <input type="text" name="label" class="swiss-input" placeholder="e.g. Account-Zurich-01" required>
+            </div>
+            <div class="swiss-field" style="flex:2">
+              <label>Gemini API Key</label>
+              <input type="password" name="key" class="swiss-input" placeholder="AIzaSy..." required>
+            </div>
+            <button type="submit" class="btn-swiss-action">Commit Key</button>
+          </form>
+        </div>
+      </div>
+
+      <div class="swiss-row">
+        <div class="swiss-row-label">
+          <div class="row-index">SECTION 02</div>
+          <div class="row-title">Upstream Pool</div>
+          <div class="row-desc">Array of Google API keys actively rotated.</div>
+        </div>
+        <div class="swiss-row-body" style="padding:0">
+          <div class="swiss-table-wrap">
+            <table class="swiss-table">
+              <thead>
+                <tr><th>Tag</th><th>Token Fragment</th><th>State</th><th>Actions</th></tr>
+              </thead>
+              <tbody id="keysTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage Panel -->
+    <div id="panel-usage" class="panel">
+      <div class="swiss-meta-strip">
+        <div>PACIFIC DAY WINDOW: <strong id="usage-reset">—</strong></div>
+        <div>MODEL CATALOG SYNC: <strong id="usage-mc">—</strong></div>
+      </div>
+      <div class="swiss-row">
+        <div class="swiss-row-label">
+          <div class="row-index">SECTION 03</div>
+          <div class="row-title">Telemetry Matrix</div>
+          <div class="row-desc">Per-model dispatch volume and active cooldown constraints.</div>
+        </div>
+        <div class="swiss-row-body" style="padding:0">
+          <div class="swiss-table-wrap">
+            <table class="swiss-table">
+              <thead>
+                <tr><th>Model Reference</th><th>Key Binding</th><th>Day Volume</th><th>Last Request</th><th>Condition</th></tr>
+              </thead>
+              <tbody id="usageTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...(opts.headers || {}) } });
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error?.message || d.error || 'Request failed');
+  return d;
+}
+
+async function copyText(v, btn) {
+  try { await navigator.clipboard.writeText(v); btn.textContent = 'KOPIERT!'; return; } catch {}
+  const t = document.createElement('textarea');
+  t.value = v; t.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(t); t.focus(); t.select();
+  document.execCommand('copy'); t.remove();
+  btn.textContent = 'KOPIERT!';
+}
+
+function showClientKey(key) {
+  const b = document.getElementById('generatedClientKey');
+  b.className = 'swiss-key-alert visible';
+  b.innerHTML = `<div class="swiss-alert-head">ACHTUNG: SICHERN SIE DIESEN SCHLÜSSEL JETZT (EINMALIGE ANZEIGE)</div>
+    <code class="swiss-key-code">${esc(key)}</code>
+    <button class="btn-tbl" onclick="copyText('${esc(key)}',this)">KOPIEREN</button>`;
+}
+
+function badge(row) {
+  if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
+    return '<span class="swiss-tag live">BEREIT</span>';
+  }
+  return `<span class="swiss-tag cooldown">COOLDOWN (${esc(row.cooldown_reason || 'LIMIT')})</span>`;
+}
+
+function render(d) {
+  const totalReq = (d.usage || []).reduce((s, r) => s + (r.today || 0), 0);
+  const models = [...new Set((d.usage || []).map(r => r.model))];
+
+  document.getElementById('ov-ck').textContent = (d.clientKeys || []).length;
+  document.getElementById('ov-gk').textContent = (d.keys || []).length;
+  document.getElementById('ov-m').textContent = models.length;
+  document.getElementById('ov-r').textContent = totalReq;
+
+  const rst = d.resetTimezone ? `Pacific (${d.resetTimezone}) // Started ${new Date(d.resetAt).toLocaleTimeString()}` : '';
+  const mc = d.modelsCheckedAt ? `${new Date(Number(d.modelsCheckedAt)).toLocaleString()}` : 'Ungeprüft';
+
+  document.getElementById('ov-reset').textContent = rst;
+  document.getElementById('ov-mc').textContent = mc;
+  document.getElementById('usage-reset').textContent = rst;
+  document.getElementById('usage-mc').textContent = mc;
+
+  const ck = d.clientKeys || [];
+  document.getElementById('clientKeysTbody').innerHTML = ck.length
+    ? ck.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="swiss-tag live">AKTIV</span>' : '<span class="swiss-tag off">INAKTIV</span>'}</td>
+        <td>
+          <button class="btn-tbl" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'Deaktivieren' : 'Aktivieren'}</button>
+          <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Löschen</button>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="swiss-empty">Keine Client-Schlüssel vorhanden.</td></tr>';
+
+  const gk = d.keys || [];
+  document.getElementById('keysTbody').innerHTML = gk.length
+    ? gk.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="swiss-tag live">ROUTING</span>' : '<span class="swiss-tag off">STANDBY</span>'}</td>
+        <td>
+          <button class="btn-tbl" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'Deaktivieren' : 'Aktivieren'}</button>
+          <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Löschen</button>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="swiss-empty">Keine Gemini-Schlüssel konfiguriert.</td></tr>';
+
+  const us = d.usage || [];
+  document.getElementById('usageTbody').innerHTML = us.length
+    ? us.map(row => `<tr>
+        <td><strong>${esc(row.model)}</strong></td>
+        <td>${esc(row.label)} <span style="color:var(--ink-muted)">(${esc(row.masked)})</span></td>
+        <td style="font-size:16px;font-weight:700">${row.today}</td>
+        <td style="color:var(--ink-muted);font-size:12px">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
+        <td>${badge(row)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="swiss-empty">Keine Anfragen im aktuellen Zyklus.</td></tr>';
+}
+
+function showPanel(n, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-tab-swiss').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + n).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+async function load() {
+  try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+}
+
+document.getElementById('clientKeyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const d = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: new FormData(e.target).get('label') }) });
+    showClientKey(d.clientApiKey);
+    e.target.reset();
+    showPanel('client-keys', document.querySelectorAll('.nav-tab-swiss')[1]);
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+document.getElementById('keyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: f.get('label'), key: f.get('key') }) });
+    e.target.reset();
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+async function toggleClientKey(id, en) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteClientKey(id) { if (confirm('Schlüssel löschen?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
+async function toggleKey(id, en) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteKey(id) { if (confirm('Gemini-Schlüssel löschen?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

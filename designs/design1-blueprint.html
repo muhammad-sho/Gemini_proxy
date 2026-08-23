@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEMINI PROXY // SCHEMATIC v2.4</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,600;0,700;1,400&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg-cad: #0b1e36;
+  --bg-cad-dark: #071322;
+  --grid-line: rgba(0, 240, 255, 0.12);
+  --grid-major: rgba(0, 240, 255, 0.28);
+  --cyan: #00f0ff;
+  --cyan-dim: #008b94;
+  --cyan-ghost: rgba(0, 240, 255, 0.06);
+  --white: #edf8ff;
+  --white-dim: #8faec4;
+  --amber: #ffaa00;
+  --crimson: #ff3366;
+  --border-cad: 1px solid rgba(0, 240, 255, 0.35);
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:'Share Tech Mono',monospace;
+  background:var(--bg-cad);
+  color:var(--white);
+  min-height:100vh;
+  position:relative;
+  overflow-x:hidden;
+}
+
+/* CAD Blueprint Grid */
+.cad-grid{
+  position:fixed;
+  inset:0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(var(--grid-major) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-major) 1px, transparent 1px);
+  background-size: 20px 20px, 20px 20px, 100px 100px, 100px 100px;
+  pointer-events:none;
+  z-index:0;
+}
+
+/* Drafting Corner Marks */
+.cad-frame{
+  position:relative;
+  z-index:10;
+  max-width:1200px;
+  margin:20px auto;
+  padding:24px;
+  border:2px solid var(--cyan-dim);
+  background:rgba(7, 19, 34, 0.88);
+  box-shadow:0 0 30px rgba(0, 240, 255, 0.08), inset 0 0 40px rgba(0, 240, 255, 0.03);
+}
+.cad-frame::before{
+  content:'ISO 9001 // SEC: AI-ROUTING-CORE // REF. 89-B';
+  position:absolute;
+  top:-11px;left:30px;
+  background:var(--bg-cad-dark);
+  padding:0 12px;
+  font-size:10px;
+  letter-spacing:0.18em;
+  color:var(--cyan);
+}
+.cad-frame::after{
+  content:'COORD: 37.7749° N, 122.4194° W';
+  position:absolute;
+  bottom:-11px;right:30px;
+  background:var(--bg-cad-dark);
+  padding:0 12px;
+  font-size:10px;
+  letter-spacing:0.18em;
+  color:var(--cyan-dim);
+}
+
+/* Header & Stamp */
+.blueprint-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  border-bottom:2px solid var(--cyan-dim);
+  padding-bottom:18px;
+  margin-bottom:24px;
+  flex-wrap:wrap;
+  gap:16px;
+}
+.title-block{display:flex;align-items:center;gap:16px}
+.draft-badge{
+  border:2px solid var(--cyan);
+  color:var(--cyan);
+  padding:8px 12px;
+  font-family:'Chakra Petch',sans-serif;
+  font-weight:700;
+  font-size:18px;
+  letter-spacing:0.1em;
+  background:var(--cyan-ghost);
+}
+.title-text h1{
+  font-family:'Chakra Petch',sans-serif;
+  font-size:24px;
+  font-weight:700;
+  letter-spacing:0.08em;
+  color:var(--white);
+  text-transform:uppercase;
+}
+.title-text p{
+  font-size:11px;
+  color:var(--cyan);
+  letter-spacing:0.15em;
+}
+
+.stamp-box{
+  border:1px dashed var(--cyan);
+  padding:8px 16px;
+  font-size:11px;
+  display:flex;
+  gap:20px;
+  background:rgba(0, 240, 255, 0.03);
+}
+.stamp-item{display:flex;flex-direction:column}
+.stamp-label{font-size:9px;color:var(--cyan-dim);text-transform:uppercase}
+.stamp-val{color:var(--white);font-weight:700}
+
+/* Nav Tabs */
+.draft-tabs{
+  display:flex;
+  gap:0;
+  border:1px solid var(--cyan-dim);
+  margin-bottom:24px;
+  background:var(--bg-cad-dark);
+  overflow-x:auto;
+}
+.draft-tab{
+  font-family:'Chakra Petch',sans-serif;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  padding:12px 24px;
+  background:transparent;
+  border:none;
+  border-right:1px solid var(--cyan-dim);
+  color:var(--white-dim);
+  cursor:pointer;
+  transition:all .15s;
+  white-space:nowrap;
+  position:relative;
+}
+.draft-tab:hover{color:var(--cyan);background:var(--cyan-ghost)}
+.draft-tab.active{
+  color:var(--bg-cad-dark);
+  background:var(--cyan);
+  font-weight:700;
+}
+
+/* Panels */
+.panel{display:none;animation:fadeIn .25s ease}
+.panel.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* Specs Stats Grid */
+.specs-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:16px;
+  margin-bottom:24px;
+}
+.spec-box{
+  border:1px solid var(--cyan-dim);
+  background:rgba(0, 240, 255, 0.02);
+  padding:18px;
+  position:relative;
+}
+.spec-box::before{
+  content:'+';
+  position:absolute;
+  top:-7px;right:-5px;
+  color:var(--cyan);
+  font-size:14px;
+  line-height:1;
+}
+.spec-code{font-size:10px;color:var(--cyan-dim);letter-spacing:0.15em;margin-bottom:6px}
+.spec-value{
+  font-family:'Chakra Petch',sans-serif;
+  font-size:36px;
+  font-weight:700;
+  color:var(--cyan);
+  line-height:1;
+  margin-bottom:6px;
+}
+.spec-name{font-size:11px;color:var(--white-dim);text-transform:uppercase}
+
+/* Telemetry meta */
+.telemetry-strip{
+  border-left:3px solid var(--cyan);
+  background:rgba(0, 240, 255, 0.04);
+  padding:12px 18px;
+  font-size:12px;
+  color:var(--white-dim);
+  display:flex;
+  flex-wrap:wrap;
+  gap:24px;
+  margin-bottom:24px;
+}
+
+/* Schematic Section */
+.cad-section{
+  border:1px solid var(--cyan-dim);
+  margin-bottom:24px;
+  background:rgba(11, 30, 54, 0.6);
+}
+.cad-section-head{
+  background:rgba(0, 240, 255, 0.08);
+  border-bottom:1px solid var(--cyan-dim);
+  padding:10px 16px;
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+}
+.cad-title{
+  font-family:'Chakra Petch',sans-serif;
+  font-size:14px;
+  font-weight:700;
+  color:var(--cyan);
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+}
+.cad-section-body{padding:20px}
+
+/* Blueprint Forms */
+.cad-form{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+  align-items:flex-end;
+}
+.cad-field{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  flex:1;
+  min-width:180px;
+}
+.cad-label{
+  font-size:10px;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  color:var(--cyan);
+}
+.cad-input{
+  font-family:'Share Tech Mono',monospace;
+  font-size:13px;
+  background:var(--bg-cad-dark);
+  border:1px solid var(--cyan-dim);
+  color:var(--white);
+  padding:10px 14px;
+  outline:none;
+  transition:border-color .2s;
+  width:100%;
+}
+.cad-input:focus{
+  border-color:var(--cyan);
+  box-shadow:0 0 10px rgba(0, 240, 255, 0.25);
+}
+
+/* Buttons */
+.btn-cad{
+  font-family:'Chakra Petch',sans-serif;
+  font-size:13px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+  padding:10px 20px;
+  background:transparent;
+  border:1px solid var(--cyan);
+  color:var(--cyan);
+  cursor:pointer;
+  transition:all .2s;
+  white-space:nowrap;
+}
+.btn-cad:hover{
+  background:var(--cyan);
+  color:var(--bg-cad-dark);
+  box-shadow:0 0 15px rgba(0, 240, 255, 0.4);
+}
+.btn-cad-sm{
+  font-size:11px;
+  padding:5px 12px;
+}
+.btn-cad-danger{
+  border-color:var(--crimson);
+  color:var(--crimson);
+}
+.btn-cad-danger:hover{
+  background:var(--crimson);
+  color:#fff;
+  box-shadow:0 0 12px rgba(255, 51, 102, 0.4);
+}
+
+/* Key Display Callout */
+.cad-key-alert{
+  display:none;
+  border:2px solid var(--amber);
+  background:rgba(255, 170, 0, 0.06);
+  padding:18px;
+  margin-bottom:20px;
+  animation:fadeIn .25s ease;
+}
+.cad-key-alert.visible{display:block}
+.cad-key-title{
+  color:var(--amber);
+  font-family:'Chakra Petch',sans-serif;
+  font-weight:700;
+  font-size:12px;
+  letter-spacing:0.1em;
+  margin-bottom:8px;
+}
+.cad-key-code{
+  background:var(--bg-cad-dark);
+  border:1px solid var(--amber);
+  padding:10px;
+  color:var(--white);
+  font-size:12px;
+  word-break:break-all;
+  margin-bottom:12px;
+  display:block;
+}
+
+/* CAD Data Table */
+.cad-table-wrap{overflow-x:auto}
+.cad-table{
+  width:100%;
+  border-collapse:collapse;
+  font-size:12px;
+}
+.cad-table th{
+  text-align:left;
+  font-size:10px;
+  letter-spacing:0.15em;
+  text-transform:uppercase;
+  color:var(--cyan);
+  border-bottom:1px solid var(--cyan-dim);
+  background:rgba(0, 240, 255, 0.05);
+  padding:10px 14px;
+}
+.cad-table td{
+  padding:12px 14px;
+  border-bottom:1px solid rgba(0, 240, 255, 0.1);
+  vertical-align:middle;
+}
+.cad-table tr:hover td{
+  background:rgba(0, 240, 255, 0.04);
+}
+
+/* Status Badges */
+.cad-badge{
+  display:inline-block;
+  font-size:10px;
+  letter-spacing:0.1em;
+  text-transform:uppercase;
+  padding:2px 8px;
+  border:1px solid var(--cyan);
+  color:var(--cyan);
+}
+.cad-badge.cooldown{
+  border-color:var(--amber);
+  color:var(--amber);
+}
+.cad-badge.disabled{
+  border-color:var(--white-dim);
+  color:var(--white-dim);
+}
+
+.cad-empty{
+  text-align:center;
+  padding:36px;
+  color:var(--white-dim);
+  font-style:italic;
+  letter-spacing:0.1em;
+}
+
+@media(max-width:768px){
+  .cad-frame{padding:16px;margin:10px}
+  .specs-grid{grid-template-columns:1fr 1fr}
+  .blueprint-header{flex-direction:column;align-items:flex-start}
+  .stamp-box{width:100%;justify-content:space-between}
+  .cad-form{flex-direction:column}
+  .cad-field{width:100%}
+  .cad-table{display:block;overflow-x:auto}
+}
+</style>
+</head>
+<body>
+<div class="cad-grid"></div>
+
+<div class="cad-frame">
+
+  <!-- Header -->
+  <div class="blueprint-header">
+    <div class="title-block">
+      <div class="draft-badge">GP-24</div>
+      <div class="title-text">
+        <h1>Gemini Router Core</h1>
+        <p>SPEC // AUTONOMOUS MULTI-KEY DISPATCH ENGINE</p>
+      </div>
+    </div>
+    <div class="stamp-box">
+      <div class="stamp-item"><span class="stamp-label">System State</span><span class="stamp-val" style="color:var(--cyan)">ONLINE / NORMAL</span></div>
+      <div class="stamp-item"><span class="stamp-label">Protocol</span><span class="stamp-val">GEMINI v1beta</span></div>
+      <button class="btn-cad btn-cad-sm" onclick="logout()">[ ABORT ]</button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="draft-tabs">
+    <button class="draft-tab active" onclick="showPanel('overview',this)">// 01_OVERVIEW</button>
+    <button class="draft-tab" onclick="showPanel('client-keys',this)">// 02_CLIENT_TOKENS</button>
+    <button class="draft-tab" onclick="showPanel('gemini-keys',this)">// 03_GEMINI_UPSTREAMS</button>
+    <button class="draft-tab" onclick="showPanel('usage',this)">// 04_TELEMETRY_LOGS</button>
+  </div>
+
+  <!-- Overview Panel -->
+  <div id="panel-overview" class="panel active">
+    <div class="specs-grid">
+      <div class="spec-box">
+        <div class="spec-code">SYS-METRIC // 01</div>
+        <div class="spec-value" id="ov-ck">—</div>
+        <div class="spec-name">Active Client Keys</div>
+      </div>
+      <div class="spec-box">
+        <div class="spec-code">SYS-METRIC // 02</div>
+        <div class="spec-value" id="ov-gk">—</div>
+        <div class="spec-name">Gemini API Keys</div>
+      </div>
+      <div class="spec-box">
+        <div class="spec-code">SYS-METRIC // 03</div>
+        <div class="spec-value" id="ov-m">—</div>
+        <div class="spec-name">Discovered Models</div>
+      </div>
+      <div class="spec-box">
+        <div class="spec-code">SYS-METRIC // 04</div>
+        <div class="spec-value" id="ov-r">—</div>
+        <div class="spec-name">Day Requests Total</div>
+      </div>
+    </div>
+    <div class="telemetry-strip">
+      <div><strong>RESET_WINDOW:</strong> <span id="ov-reset">Acquiring schedule...</span></div>
+      <div><strong>MODEL_CATALOG:</strong> <span id="ov-mc">—</span></div>
+    </div>
+  </div>
+
+  <!-- Client Keys Panel -->
+  <div id="panel-client-keys" class="panel">
+    <div id="generatedClientKey" class="cad-key-alert"></div>
+    <div class="cad-section">
+      <div class="cad-section-head">
+        <span class="cad-title">GEN_01 // Generate Client Access Token</span>
+      </div>
+      <div class="cad-section-body">
+        <form id="clientKeyForm" class="cad-form">
+          <div class="cad-field">
+            <label class="cad-label">Access Label / Service Name</label>
+            <input type="text" name="label" class="cad-input" placeholder="e.g. n8n-prod-pipeline" required>
+          </div>
+          <button type="submit" class="btn-cad">Execute Generation</button>
+        </form>
+      </div>
+    </div>
+    <div class="cad-section">
+      <div class="cad-section-head">
+        <span class="cad-title">REG_01 // Client Tokens Directory</span>
+      </div>
+      <div class="cad-table-wrap">
+        <table class="cad-table">
+          <thead>
+            <tr><th>Label Index</th><th>Hash Prefix</th><th>State</th><th>Control</th></tr>
+          </thead>
+          <tbody id="clientKeysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gemini Keys Panel -->
+  <div id="panel-gemini-keys" class="panel">
+    <div class="cad-section">
+      <div class="cad-section-head">
+        <span class="cad-title">BIND_02 // Add Upstream Gemini Key</span>
+      </div>
+      <div class="cad-section-body">
+        <form id="keyForm" class="cad-form">
+          <div class="cad-field">
+            <label class="cad-label">Account Identification</label>
+            <input type="text" name="label" class="cad-input" placeholder="e.g. Project-Alpha-01" required>
+          </div>
+          <div class="cad-field" style="flex:2">
+            <label class="cad-label">Gemini API Key String</label>
+            <input type="password" name="key" class="cad-input" placeholder="AIzaSy..." required>
+          </div>
+          <button type="submit" class="btn-cad">Commit Key</button>
+        </form>
+      </div>
+    </div>
+    <div class="cad-section">
+      <div class="cad-section-head">
+        <span class="cad-title">POOL_02 // Configured Upstream Array</span>
+      </div>
+      <div class="cad-table-wrap">
+        <table class="cad-table">
+          <thead>
+            <tr><th>Key Identifier</th><th>Token Fragment</th><th>Status</th><th>Control</th></tr>
+          </thead>
+          <tbody id="keysTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usage Panel -->
+  <div id="panel-usage" class="panel">
+    <div class="telemetry-strip" style="margin-bottom:16px">
+      <div><strong>CYCLE_START:</strong> <span id="usage-reset">—</span></div>
+      <div><strong>SYNC_EVENT:</strong> <span id="usage-mc">—</span></div>
+    </div>
+    <div class="cad-section">
+      <div class="cad-section-head">
+        <span class="cad-title">MATRIX_03 // Model Load Distribution & Cooldown Matrix</span>
+      </div>
+      <div class="cad-table-wrap">
+        <table class="cad-table">
+          <thead>
+            <tr><th>Model Target</th><th>Allocated Key</th><th>Daily Dispatches</th><th>Last Transmission</th><th>State</th></tr>
+          </thead>
+          <tbody id="usageTbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+
+async function api(url, opts = {}) {
+  const r = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrf(), ...(opts.headers || {}) } });
+  const d = await r.json();
+  if (!r.ok) throw Error(d.error?.message || d.error || 'Request failed');
+  return d;
+}
+
+async function copyText(v, btn) {
+  try { await navigator.clipboard.writeText(v); btn.textContent = '[ COPIED ]'; return; } catch {}
+  const t = document.createElement('textarea');
+  t.value = v; t.style.cssText = 'position:fixed;opacity:0';
+  document.body.appendChild(t); t.focus(); t.select();
+  document.execCommand('copy'); t.remove();
+  btn.textContent = '[ COPIED ]';
+}
+
+function showClientKey(key) {
+  const b = document.getElementById('generatedClientKey');
+  b.className = 'cad-key-alert visible';
+  b.innerHTML = `<div class="cad-key-title">CRITICAL: CAPTURE CLIENT TOKEN NOW — STORED IN TRANSIENT BUFFER ONLY</div>
+    <code class="cad-key-code">${esc(key)}</code>
+    <button class="btn-cad btn-cad-sm" onclick="copyText('${esc(key)}',this)">[ COPY BUFFER ]</button>`;
+}
+
+function badge(row) {
+  if (!row.cooldown_until || Number(row.cooldown_until) <= Date.now()) {
+    return '<span class="cad-badge">ARMED / READY</span>';
+  }
+  return `<span class="cad-badge cooldown">COOLDOWN (${esc(row.cooldown_reason || 'LIMIT')})</span>`;
+}
+
+function render(d) {
+  const totalReq = (d.usage || []).reduce((s, r) => s + (r.today || 0), 0);
+  const models = [...new Set((d.usage || []).map(r => r.model))];
+
+  document.getElementById('ov-ck').textContent = (d.clientKeys || []).length;
+  document.getElementById('ov-gk').textContent = (d.keys || []).length;
+  document.getElementById('ov-m').textContent = models.length;
+  document.getElementById('ov-r').textContent = totalReq;
+
+  const rst = d.resetTimezone ? `Pacific Window (${d.resetTimezone}) // Started: ${new Date(d.resetAt).toLocaleTimeString()}` : '';
+  const mc = d.modelsCheckedAt ? `${new Date(Number(d.modelsCheckedAt)).toLocaleString()}` : 'Unchecked';
+
+  document.getElementById('ov-reset').textContent = rst;
+  document.getElementById('ov-mc').textContent = mc;
+  document.getElementById('usage-reset').textContent = rst;
+  document.getElementById('usage-mc').textContent = mc;
+
+  const ck = d.clientKeys || [];
+  document.getElementById('clientKeysTbody').innerHTML = ck.length
+    ? ck.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="cad-badge">ENABLED</span>' : '<span class="cad-badge disabled">DISABLED</span>'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn-cad btn-cad-sm" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'DISABLE' : 'ENABLE'}</button>
+            <button class="btn-cad btn-cad-sm btn-cad-danger" onclick="deleteClientKey(${k.id})">PURGE</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="cad-empty">// NO CLIENT TOKENS INITIALIZED</td></tr>';
+
+  const gk = d.keys || [];
+  document.getElementById('keysTbody').innerHTML = gk.length
+    ? gk.map(k => `<tr>
+        <td><strong>${esc(k.label)}</strong></td>
+        <td><code>${esc(k.masked)}</code></td>
+        <td>${k.enabled ? '<span class="cad-badge">ARMED</span>' : '<span class="cad-badge disabled">STANDBY</span>'}</td>
+        <td>
+          <div style="display:flex;gap:6px">
+            <button class="btn-cad btn-cad-sm" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'DISABLE' : 'ENABLE'}</button>
+            <button class="btn-cad btn-cad-sm btn-cad-danger" onclick="deleteKey(${k.id})">PURGE</button>
+          </div>
+        </td>
+      </tr>`).join('')
+    : '<tr><td colspan="4" class="cad-empty">// NO GEMINI KEYS CONFIGURED</td></tr>';
+
+  const us = d.usage || [];
+  document.getElementById('usageTbody').innerHTML = us.length
+    ? us.map(row => `<tr>
+        <td><strong>${esc(row.model)}</strong></td>
+        <td>${esc(row.label)} <span style="color:var(--white-dim)">(${esc(row.masked)})</span></td>
+        <td style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:16px;color:var(--cyan)">${row.today}</td>
+        <td style="color:var(--white-dim)">${row.last_request ? new Date(row.last_request).toLocaleTimeString() : '—'}</td>
+        <td>${badge(row)}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="5" class="cad-empty">// ZERO DISPATCH METRICS RECORDED IN CURRENT CYCLE</td></tr>';
+}
+
+function showPanel(n, el) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.draft-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + n).classList.add('active');
+  if (el) el.classList.add('active');
+}
+
+async function load() {
+  try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+}
+
+document.getElementById('clientKeyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const d = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: new FormData(e.target).get('label') }) });
+    showClientKey(d.clientApiKey);
+    e.target.reset();
+    showPanel('client-keys', document.querySelectorAll('.draft-tab')[1]);
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+document.getElementById('keyForm').onsubmit = async e => {
+  e.preventDefault();
+  try {
+    const f = new FormData(e.target);
+    await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: f.get('label'), key: f.get('key') }) });
+    e.target.reset();
+    load();
+  } catch (err) { alert(err.message); }
+};
+
+async function toggleClientKey(id, en) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteClientKey(id) { if (confirm('Purge client token?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
+async function toggleKey(id, en) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled: en }) }); load(); }
+async function deleteKey(id) { if (confirm('Purge Gemini key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
+async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>
