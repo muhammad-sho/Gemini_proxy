@@ -394,11 +394,13 @@ function refreshModelsOnce(request) {
 
 async function refreshModels(request) {
   const keys = enabledKeys();
+  console.log(`[Models] refreshModels: ${keys.length} enabled keys`);
   let lastResult = null;
   for (const key of keys) {
     try {
       const result = await forwardToGemini(request, Buffer.alloc(0), key.api_key);
       lastResult = result;
+      console.log(`[Models] key ${key.id} status: ${result.status}`);
       if (result.status >= 200 && result.status < 300) {
         let payload;
         try { payload = JSON.parse(result.body.toString("utf8")); } catch { payload = null; }
@@ -409,6 +411,7 @@ async function refreshModels(request) {
             const pageUrl = new URL(request.url, "http://localhost");
             pageUrl.searchParams.set("pageToken", pageToken);
             const pageResult = await forwardToGemini({ ...request, url: pageUrl.pathname + pageUrl.search }, Buffer.alloc(0), key.api_key);
+            console.log(`[Models] page ${page+2} status: ${pageResult.status}`);
             if (pageResult.status < 200 || pageResult.status >= 300) break;
             let pagePayload;
             try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { pagePayload = null; }
@@ -417,6 +420,7 @@ async function refreshModels(request) {
             pageToken = pagePayload.nextPageToken;
           }
           const cachedPayload = buildModelsPayload(allModels);
+          console.log(`[Models] cached ${cachedPayload.models.length} models from key ${key.id}`);
           if (cachedPayload.models.length) {
             setMeta("models_cache", JSON.stringify(cachedPayload));
             setMeta("models_checked_at", Date.now());
@@ -429,6 +433,7 @@ async function refreshModels(request) {
       console.error(`[Models] key ${key.id}: ${error.message}`);
     }
   }
+  console.log("[Models] all keys failed or no models returned");
   return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No enabled Gemini API keys" })) };
 }
 
