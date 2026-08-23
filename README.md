@@ -31,7 +31,7 @@ For local development, build instead:
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
-Open `http://SERVER_IP:8080/`. On the first visit, create the dashboard
+Open `http://SERVER_IP:18765/`. On the first visit, create the dashboard
 account. Setup generates a local client API key for n8n; save it because it is
 shown only once. Add Gemini keys from the dashboard.
 Add the exact currently supported model name from your Gemini account in the
@@ -43,7 +43,7 @@ Use the normal Gemini URL, but point it at the proxy and send the local key:
 
 ```bash
 curl -X POST \
-  http://SERVER_IP:8080/v1beta/models/gemini-2.0-flash:generateContent \
+  http://SERVER_IP:18765/v1beta/models/gemini-2.0-flash:generateContent \
   -H 'Content-Type: application/json' \
   -H 'x-proxy-api-key: the-client-key-generated-during-setup' \
   -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
@@ -65,9 +65,9 @@ errors cool down that model/key until the next Pacific midnight.
 The repository contains no runtime credentials. Gemini keys are entered after
 first-run setup and stored in plaintext in the private SQLite volume because
 the proxy must recover them for upstream authentication. Protect that volume
-and back it up securely. The app intentionally listens on `0.0.0.0:8080` for
+and back it up securely. The app intentionally listens on `0.0.0.0:18765` for
 self-hosted/container use, and the Compose mapping publishes that port on all
 host interfaces. Put it behind an HTTPS reverse proxy, restrict dashboard
 access with firewall rules or a VPN, and expose only ports 80/443 publicly. Do
-not expose plain HTTP port 8080 to the public internet except for a temporary,
+not expose plain HTTP port 18765 to the public internet except for a temporary,
 trusted-network test.

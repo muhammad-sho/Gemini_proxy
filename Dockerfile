@@ -6,5 +6,5 @@ COPY server.js ./server.js
 COPY dashboard.html ./dashboard.html
 
 USER node
-EXPOSE 8080
+EXPOSE 18765
 CMD ["node", "server.js"]
