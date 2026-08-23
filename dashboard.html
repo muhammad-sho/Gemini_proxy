@@ -1,90 +1,64 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Gemini Proxy</title>
   <style>
-    body{font:15px system-ui;margin:32px auto;max-width:1000px;padding:0 18px;background:#f6f7f9;color:#18202a}
-    section{background:#fff;padding:20px;margin:16px 0;border-radius:10px;box-shadow:0 1px 4px #0001}
-    input,button{padding:9px;margin:4px;border:1px solid #ccd2da;border-radius:6px}
-    button{cursor:pointer;background:#18202a;color:#fff}
-    table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:9px;border-bottom:1px solid #e8ebef}
-    .muted{color:#697586}.key-result{background:#fff8df;border:1px solid #e4c766;padding:14px;margin:12px 0;word-break:break-all}
-    code{word-break:break-all}
+    :root{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif;color:#172033;background:#f5f7fb}
+    *{box-sizing:border-box}body{margin:0}.shell{max-width:1120px;margin:auto;padding:34px 20px 60px}
+    header{display:flex;justify-content:space-between;align-items:end;gap:20px;margin-bottom:24px}h1,h2,p{margin-top:0}h1{font-size:28px;letter-spacing:-.03em;margin-bottom:6px}h2{font-size:17px;margin-bottom:16px}.subtle,.muted{color:#667085;font-size:13px}
+    section{background:#fff;border:1px solid #e5e9f0;border-radius:14px;padding:22px;margin-top:16px;box-shadow:0 5px 18px #18202a08}
+    form{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}input,button{font:inherit;border:1px solid #d5dbe5;border-radius:8px;padding:9px 11px}input{min-width:180px}button{background:#1d2939;color:#fff;cursor:pointer}button:hover{background:#344054}.danger{background:#fff;color:#b42318;border-color:#f0b8b2}
+    table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:12px 10px;border-bottom:1px solid #edf0f4;vertical-align:middle}th{color:#667085;font-weight:600}tr:last-child td{border-bottom:0}.badge{display:inline-flex;border-radius:999px;padding:4px 8px;font-size:12px;background:#ecfdf3;color:#067647}.badge.cooldown{background:#fff4e5;color:#b54708}.empty{text-align:center;color:#667085;padding:24px}
+    .key-result{background:#fffaeb;border:1px solid #fedf89;border-radius:10px;padding:14px;margin:16px 0;word-break:break-all}.key-result code{display:block;margin:8px 0;color:#344054}
+    @media(max-width:700px){header{display:block}table{display:block;overflow-x:auto;white-space:nowrap}form input{width:100%}}
   </style>
 </head>
 <body>
-  <h1>Gemini Proxy</h1>
+<main class="shell">
+  <header><div><h1>Gemini Proxy</h1><p class="subtle">Key routing and current-day usage</p></div></header>
   <div id="generatedClientKey"></div>
   <section>
-    <h2>Client API keys</h2>
+    <h2>Client access keys</h2>
     <form id="clientKeyForm"><input name="label" placeholder="Label" required><button>Generate client key</button></form>
     <table id="clientKeys"></table>
-    <p class="muted">Use a generated client key in n8n. The full value is shown only when generated.</p>
+    <p class="muted">Use a client key in n8n. The full value is shown only when it is generated.</p>
   </section>
   <section>
     <h2>Gemini API keys</h2>
-    <form id="keyForm"><input name="label" placeholder="Label" required><input name="key" placeholder="Gemini API key" required size="35"><button>Add key</button></form>
+    <form id="keyForm"><input name="label" placeholder="Label" required><input name="key" placeholder="Gemini API key" required size="35"><button>Add Gemini key</button></form>
     <table id="keys"></table>
   </section>
   <section>
-    <h2>Models from Gemini</h2>
-    <p class="muted">Models are synchronized from Google's real models endpoint. They cannot be added manually.</p>
-    <button id="refreshModels" type="button">Refresh models</button>
-    <p id="modelsLastChecked" class="muted"></p>
-    <table id="models"></table>
-  </section>
-  <section>
-    <h2>Usage today</h2>
+    <h2>Usage and cooldowns</h2>
     <p id="reset" class="muted"></p>
+    <p id="modelsChecked" class="muted"></p>
     <table id="usage"></table>
   </section>
-  <script>
-    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
-    async function api(url, options = {}) {
-      const headers = {'Content-Type':'application/json','X-CSRF-Token':csrf(),...(options.headers || {})};
-      const response = await fetch(url, {...options, headers});
-      const data = await response.json();
-      if (!response.ok) throw Error(data.error?.message || data.error || 'Request failed');
-      return data;
-    }
-    async function copyText(value, button) {
-      let copied = false;
-      try { if (navigator.clipboard) { await navigator.clipboard.writeText(value); copied = true; } } catch {}
-      if (!copied) {
-        const input = document.createElement('textarea'); input.value = value; input.style.position = 'fixed'; input.style.opacity = '0';
-        document.body.appendChild(input); input.focus(); input.select(); copied = document.execCommand('copy'); input.remove();
-      }
-      button.textContent = copied ? 'Copied' : 'Copy failed - select manually';
-    }
-    function showClientKey(key) {
-      const box = document.querySelector('#generatedClientKey'); box.className = 'key-result'; box.replaceChildren();
-      const message = document.createElement('strong'); message.textContent = 'Save this client key now. It will not be shown again.';
-      const value = document.createElement('code'); value.textContent = key;
-      const button = document.createElement('button'); button.type = 'button'; button.textContent = 'Copy key'; button.onclick = () => copyText(key, button);
-      box.append(message, document.createElement('br'), value, document.createElement('br'), button);
-    }
-    function render(data) {
-      document.querySelector('#clientKeys').innerHTML = '<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>' + data.clientKeys.map((key) => `<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleClientKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button onclick="deleteClientKey(${key.id})">Delete</button></td></tr>`).join('');
-      document.querySelector('#keys').innerHTML = '<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>' + data.keys.map((key) => `<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button onclick="deleteKey(${key.id})">Delete</button></td></tr>`).join('');
-      document.querySelector('#models').innerHTML = '<tr><th>Model</th><th>Limits</th><th>Successful usage</th><th>Status</th><th></th></tr>' + (data.models.length ? data.models.map((model) => { const name = encodeURIComponent(model.name); return `<tr><td>${esc(model.name)}</td><td><input id="rpm-${name}" type="number" min="0" value="${model.rpm_limit||0}" title="Requests per minute"><input id="rpd-${name}" type="number" min="0" value="${model.rpd_limit||0}" title="Requests per day"><button onclick="saveLimits('${name}')">Save</button></td><td>${model.minute} / ${model.day} (transient cooldown ${model.cooldown_seconds}s)</td><td>${model.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleModel('${name}',${!model.enabled})">${model.enabled?'Disable':'Enable'}</button></td></tr>`; }).join('') : '<tr><td colspan="5">No models synchronized yet. Click Refresh models.</td></tr>');
-      document.querySelector('#usage').innerHTML = '<tr><th>Model</th><th>Key</th><th>Successful requests today</th><th>Last successful request</th></tr>' + (data.usage.length ? data.usage.map((usage) => `<tr><td>${esc(usage.model)}</td><td>${esc(usage.label)} (${esc(usage.masked)})</td><td>${usage.today}</td><td>${usage.last_request?new Date(usage.last_request).toLocaleString():'-'}</td></tr>`).join('') : '<tr><td colspan="4">No successful requests in the current daily window.</td></tr>');
-      document.querySelector('#reset').textContent = 'Google daily window resets at midnight Pacific Time (' + data.resetTimezone + '). Current window began ' + new Date(data.resetAt).toLocaleString();
-      document.querySelector('#modelsLastChecked').textContent = data.modelsCheckedAt ? 'Last checked: ' + new Date(Number(data.modelsCheckedAt)).toLocaleString() : 'Models have not been checked yet.';
-    }
-    async function load() { try { render(await api('/api/admin/state')); } catch (error) { alert(error.message); } }
-    document.querySelector('#clientKeyForm').onsubmit = async (event) => { event.preventDefault(); try { const form = new FormData(event.target); const data = await api('/api/admin/client-keys',{method:'POST',body:JSON.stringify({label:form.get('label')})}); showClientKey(data.clientApiKey); event.target.reset(); load(); } catch (error) { alert(error.message); } };
-    document.querySelector('#keyForm').onsubmit = async (event) => { event.preventDefault(); try { const form = new FormData(event.target); await api('/api/admin/keys',{method:'POST',body:JSON.stringify({label:form.get('label'),key:form.get('key')})}); event.target.reset(); load(); } catch (error) { alert(error.message); } };
-    document.querySelector('#refreshModels').onclick = async () => { try { await api('/api/admin/models/refresh',{method:'POST'}); await load(); } catch (error) { alert(error.message); } };
-    async function toggleClientKey(id, enabled) { await api('/api/admin/client-keys/' + id,{method:'PATCH',body:JSON.stringify({enabled})}); load(); }
-    async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id,{method:'DELETE'}); load(); } }
-    async function toggleKey(id, enabled) { await api('/api/admin/keys/' + id,{method:'PATCH',body:JSON.stringify({enabled})}); load(); }
-    async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id,{method:'DELETE'}); load(); } }
-    async function toggleModel(name, enabled) { await api('/api/admin/models/' + name,{method:'PATCH',body:JSON.stringify({enabled})}); load(); }
-    async function saveLimits(name) { const rpm = Number(document.querySelector('#rpm-' + name).value || 0); const rpd = Number(document.querySelector('#rpd-' + name).value || 0); await api('/api/admin/models/' + name,{method:'PATCH',body:JSON.stringify({rpm,rpd})}); load(); }
-    load(); setInterval(load, 10000);
-  </script>
+</main>
+<script>
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const csrf = () => document.cookie.match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || '';
+  async function api(url, options = {}) { const response = await fetch(url,{...options,headers:{'Content-Type':'application/json','X-CSRF-Token':csrf(),...(options.headers||{})}}); const data = await response.json(); if (!response.ok) throw Error(data.error?.message || data.error || 'Request failed'); return data; }
+  async function copyText(value, button) { let copied=false; try { if (navigator.clipboard) { await navigator.clipboard.writeText(value); copied=true; } } catch {} if (!copied) { const input=document.createElement('textarea'); input.value=value; input.style.position='fixed'; input.style.opacity='0'; document.body.appendChild(input); input.focus(); input.select(); copied=document.execCommand('copy'); input.remove(); } button.textContent=copied?'Copied':'Copy failed - select manually'; }
+  function showClientKey(key) { const box=document.querySelector('#generatedClientKey'); box.className='key-result'; box.replaceChildren(); const title=document.createElement('strong'); title.textContent='Save this client key now. It will not be shown again.'; const value=document.createElement('code'); value.textContent=key; const button=document.createElement('button'); button.type='button'; button.textContent='Copy key'; button.onclick=()=>copyText(key,button); box.append(title,value,button); }
+  function cooldown(row) { if (!row.cooldown_until || Number(row.cooldown_until)<=Date.now()) return '<span class="badge">Ready</span>'; const reason=esc(row.cooldown_reason||'temporary'); return `<span class="badge cooldown">${reason}<br>until ${new Date(Number(row.cooldown_until)).toLocaleString()}</span>`; }
+  function render(data) {
+    document.querySelector('#clientKeys').innerHTML='<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>'+ (data.clientKeys.length?data.clientKeys.map((key)=>`<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleClientKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button class="danger" onclick="deleteClientKey(${key.id})">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">No client keys.</td></tr>');
+    document.querySelector('#keys').innerHTML='<tr><th>Label</th><th>Key</th><th>Status</th><th></th></tr>'+ (data.keys.length?data.keys.map((key)=>`<tr><td>${esc(key.label)}</td><td>${esc(key.masked)}</td><td>${key.enabled?'Enabled':'Disabled'}</td><td><button onclick="toggleKey(${key.id},${!key.enabled})">${key.enabled?'Disable':'Enable'}</button><button class="danger" onclick="deleteKey(${key.id})">Delete</button></td></tr>`).join(''):'<tr><td colspan="4" class="empty">Add a Gemini API key to begin routing.</td></tr>');
+    document.querySelector('#usage').innerHTML='<tr><th>Model</th><th>Gemini key</th><th>Successful requests today</th><th>Last success</th><th>State</th></tr>'+ (data.usage.length?data.usage.map((row)=>`<tr><td>${esc(row.model)}</td><td>${esc(row.label)} (${esc(row.masked)})</td><td>${row.today}</td><td>${row.last_request?new Date(row.last_request).toLocaleString():'-'}</td><td>${cooldown(row)}</td></tr>`).join(''):'<tr><td colspan="5" class="empty">No usage or active cooldowns in the current day.</td></tr>');
+    document.querySelector('#reset').textContent='Current day resets at midnight Pacific Time ('+data.resetTimezone+'). Window began '+new Date(data.resetAt).toLocaleString()+'.';
+    document.querySelector('#modelsChecked').textContent=data.modelsCheckedAt?'Last Gemini model check: '+new Date(Number(data.modelsCheckedAt)).toLocaleString():'Models have not been checked yet.';
+  }
+  async function load(){try{render(await api('/api/admin/state'));}catch(error){alert(error.message);}}
+  document.querySelector('#clientKeyForm').onsubmit=async(event)=>{event.preventDefault();try{const form=new FormData(event.target);const data=await api('/api/admin/client-keys',{method:'POST',body:JSON.stringify({label:form.get('label')})});showClientKey(data.clientApiKey);event.target.reset();load();}catch(error){alert(error.message);}};
+  document.querySelector('#keyForm').onsubmit=async(event)=>{event.preventDefault();try{const form=new FormData(event.target);await api('/api/admin/keys',{method:'POST',body:JSON.stringify({label:form.get('label'),key:form.get('key')})});event.target.reset();load();}catch(error){alert(error.message);}};
+  async function toggleClientKey(id,enabled){await api('/api/admin/client-keys/'+id,{method:'PATCH',body:JSON.stringify({enabled})});load();}
+  async function deleteClientKey(id){if(confirm('Delete this client key?')){await api('/api/admin/client-keys/'+id,{method:'DELETE'});load();}}
+  async function toggleKey(id,enabled){await api('/api/admin/keys/'+id,{method:'PATCH',body:JSON.stringify({enabled})});load();}
+  async function deleteKey(id){if(confirm('Delete this Gemini API key?')){await api('/api/admin/keys/'+id,{method:'DELETE'});load();}}
+  load();setInterval(load,10000);
+</script>
 </body>
 </html>

@@ -36,8 +36,8 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 Open `http://SERVER_IP:18765/`. On the first visit, create the dashboard
 account. Setup generates a local client API key for n8n; save it because it is
 shown only once. Add Gemini keys from the dashboard.
-Add the exact currently supported model name from your Gemini account in the
-Models section before sending traffic.
+Models are discovered automatically when the proxy's `/v1beta/models` endpoint
+is called.
 
 ## Client request
 
@@ -77,9 +77,9 @@ unprivileged user. The `:Z` mount label also handles SELinux hosts such as
 Fedora/RHEL, where an unlabeled bind mount can make SQLite appear read-only.
 No `chmod`, `chown`, data directory, or manual database creation is required.
 Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
-overload/server errors retry across keys and cool down that model/key for 30
-seconds, using the model's configured `cooldown_seconds` value. Daily quota
-errors cool down that model/key until the next Pacific midnight.
+overload/server errors retry across keys and cool down that model/key for 60
+seconds. Daily quota errors cool down that model/key until the next Pacific
+midnight.
 
 ## Production security
 
