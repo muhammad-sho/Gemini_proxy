@@ -692,7 +692,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   function render(data) {
     const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
-    const models = [...new Set((data.usage || []).map(r => r.model))];
+    const models = data.models || [];
 
     document.getElementById('ov-ck').textContent = (data.clientKeys || []).length;
     document.getElementById('ov-gk').textContent = (data.keys || []).length;

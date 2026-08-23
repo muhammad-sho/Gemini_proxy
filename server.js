@@ -553,7 +553,8 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
-    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at") });
+    const models = db.prepare("SELECT name FROM models ORDER BY name").all();
+    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models });
   }
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
     const result = await refreshModelsOnce(syntheticModelsRequest());
