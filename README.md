@@ -7,8 +7,28 @@ returns Gemini's response.
 
 ## Start
 
+Normal server installation pulls the published GHCR image:
+
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
+```
+
+The image name is:
+
+```text
+ghcr.io/muhammad-sho/gemini-proxy:latest
+```
+
+The repository includes a GitHub Actions workflow that publishes this image
+after a successful push to `main`. The first installation must wait until that
+workflow succeeds; the repository must not document the image as available
+before that point.
+
+For local development, build instead:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 Open `http://SERVER_IP:8080/`. On the first visit, create the dashboard
@@ -37,14 +57,17 @@ model. A limit or cooldown of `0` means unlimited or disabled.
 SQLite is stored in the Docker volume `gemini-proxy-data` and survives rebuilds.
 Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
 overload/server errors retry across keys and cool down that model/key for 30
-seconds. Daily quota errors cool down that model/key until the next Pacific
-midnight.
+seconds, using the model's configured `cooldown_seconds` value. Daily quota
+errors cool down that model/key until the next Pacific midnight.
 
 ## Production security
 
 The repository contains no runtime credentials. Gemini keys are entered after
-first-run setup and stored in the private SQLite volume, not in the image or
-source tree. Protect that volume and back it up securely. Put the service behind
-an HTTPS reverse proxy, restrict dashboard access with firewall rules or a VPN,
-and expose only ports 80/443 publicly. Do not expose the plain HTTP port 8080
-to the public internet unless it is only a temporary, trusted-network test.
+first-run setup and stored in plaintext in the private SQLite volume because
+the proxy must recover them for upstream authentication. Protect that volume
+and back it up securely. The app intentionally listens on `0.0.0.0:8080` for
+self-hosted/container use, and the Compose mapping publishes that port on all
+host interfaces. Put it behind an HTTPS reverse proxy, restrict dashboard
+access with firewall rules or a VPN, and expose only ports 80/443 publicly. Do
+not expose plain HTTP port 8080 to the public internet except for a temporary,
+trusted-network test.

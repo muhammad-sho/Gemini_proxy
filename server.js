@@ -119,10 +119,24 @@ function localKeyIsValid(request) {
 function dashboardSessionValid(request) {
   const cookie = request.headers.cookie || "";
   const token = cookie.match(/gemini_dashboard=([^;]+)/)?.[1];
-  const expiresAt = token ? sessions.get(token) : 0;
-  if (!expiresAt) return false;
-  if (expiresAt <= Date.now()) { sessions.delete(token); return false; }
+  const session = token ? sessions.get(token) : null;
+  if (!session) return false;
+  if (session.expiresAt <= Date.now()) { sessions.delete(token); return false; }
   return true;
+}
+
+function sessionFromRequest(request) {
+  const cookie = request.headers.cookie || "";
+  const token = cookie.match(/gemini_dashboard=([^;]+)/)?.[1];
+  const session = token ? sessions.get(token) : null;
+  return session && session.expiresAt > Date.now() ? session : null;
+}
+
+function csrfValid(request) {
+  const session = sessionFromRequest(request);
+  const cookieToken = (request.headers.cookie || "").match(/(?:^|; )gemini_csrf=([^;]+)/)?.[1] || "";
+  const headerToken = request.headers["x-csrf-token"] || "";
+  return Boolean(session && cookieToken && headerToken && cookieToken === headerToken && session.csrfToken === headerToken);
 }
 
 function clientAddress(request) {
@@ -230,6 +244,10 @@ function setCooldown(model, keyId, seconds) {
     .run(model, keyId, Date.now() + Math.max(0, seconds) * 1000);
 }
 
+function nextPacificReset(now = Date.now()) {
+  return pacificDayStart(pacificDayStart(now) + 36 * 60 * 60 * 1000);
+}
+
 function keyIsCoolingDown(model, keyId) {
   return (db.prepare("SELECT cooldown_until FROM model_key_state WHERE model = ? AND key_id = ?").get(model, keyId)?.cooldown_until || 0) > Date.now();
 }
@@ -325,17 +343,17 @@ async function handleGemini(request, response, model) {
       recordRequest(model, selected.id, result.status);
       const classification = classifyUpstream(result);
       if (classification === "daily_quota") {
-        setCooldownUntil(model, selected.id, pacificDayStart(Date.now() + 36 * 60 * 60 * 1000));
+        setCooldownUntil(model, selected.id, nextPacificReset());
         if (attempt < allowedKeys.length - 1) continue;
       } else if (classification === "transient" || classification === "invalid_key") {
-        setCooldown(model, selected.id, 30);
+        setCooldown(model, selected.id, settings.cooldown_seconds);
         if (attempt < allowedKeys.length - 1) continue;
       }
       return returnUpstream(response, result);
     } catch (error) {
       console.error(`[Gemini] key ${selected.id}: ${error.message}`);
       recordRequest(model, selected.id, 502);
-      setCooldown(model, selected.id, 30);
+      setCooldown(model, selected.id, settings.cooldown_seconds);
     }
   }
   if (lastResult) {
@@ -377,11 +395,14 @@ async function handleRequest(request, response) {
     const user = db.prepare("SELECT * FROM admin_users WHERE username = ?").get(body.username || db.prepare("SELECT username FROM admin_users ORDER BY id LIMIT 1").get().username);
     if (!user || !passwordValid(String(body.password || ""), user)) { recordLoginFailure(address); return json(response, 401, { error: "Invalid username or password" }); }
     loginAttempts.delete(address);
-    const token = crypto.randomBytes(32).toString("hex"); sessions.set(token, Date.now() + SESSION_TTL_MS);
+    const token = crypto.randomBytes(32).toString("hex");
+    const csrfToken = crypto.randomBytes(32).toString("hex");
+    sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
-    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": `gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}` }); return response.end();
+    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `gemini_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
   }
   if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) return json(response, 401, { error: "Dashboard login required" });
+  if (url.pathname.startsWith("/api/admin") && request.method !== "GET" && !csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked FROM client_keys ORDER BY id").all();

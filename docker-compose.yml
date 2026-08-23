@@ -1,6 +1,6 @@
 services:
   gemini-proxy:
-    build: .
+    image: ghcr.io/muhammad-sho/gemini-proxy:latest
     container_name: gemini-proxy
     restart: unless-stopped
     init: true
