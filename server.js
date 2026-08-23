@@ -446,6 +446,14 @@ async function handleModelsList(request, response) {
     }
     return json(response, 200, cached);
   }
+  // Fallback: cache missing but models table has data — rebuild from DB
+  const dbModels = db.prepare("SELECT name FROM models ORDER BY name").all();
+  if (dbModels.length) {
+    const payload = { models: dbModels.map(m => ({ name: m.name })) };
+    setMeta("models_cache", JSON.stringify(payload));
+    setMeta("models_checked_at", Date.now());
+    return json(response, 200, payload);
+  }
   return returnUpstream(response, await refreshModelsOnce(request));
 }
 
