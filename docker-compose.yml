@@ -1,8 +1,28 @@
 services:
+  db-init:
+    image: alpine:3.20
+    container_name: gemini-proxy-db-init
+    restart: "no"
+    volumes:
+      - ./:/host
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        db=/host/local-gemini-proxy.db
+        if [ -d "$$db" ]; then
+          rmdir "$$db" 2>/dev/null || { echo "Cannot replace non-empty database directory" >&2; exit 1; }
+        fi
+        touch "$$db"
+        chmod 600 "$$db"
+
   gemini-proxy:
     image: ghcr.io/muhammad-sho/gemini-proxy:latest
     container_name: gemini-proxy
     restart: unless-stopped
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
     init: true
     read_only: true
     tmpfs:
@@ -11,18 +31,20 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - SETUID
+      - SETGID
     ports:
       - "18765:18765"
     volumes:
-      - gemini-proxy-data:/data
+      - ./local-gemini-proxy.db:/data/local-gemini-proxy.db
     environment:
       PORT: 18765
-      DB_PATH: /data/gemini-proxy.db
+      DB_PATH: /data/local-gemini-proxy.db
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:18765/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
-
-volumes:
-  gemini-proxy-data:

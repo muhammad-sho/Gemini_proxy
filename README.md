@@ -10,7 +10,9 @@ returns Gemini's response.
 Normal server installation pulls the published GHCR image:
 
 ```bash
-docker compose pull
+mkdir gemini-proxy
+cd gemini-proxy
+curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -54,7 +56,11 @@ cursor. RPM/RPD limits and cooldowns are tracked independently for every
 model/key pair, so a key cooling down for one model can still serve another
 model. A limit or cooldown of `0` means unlimited or disabled.
 
-SQLite is stored in the Docker volume `gemini-proxy-data` and survives rebuilds.
+SQLite is stored directly at `./local-gemini-proxy.db` and survives container
+restarts, recreations, and image upgrades. The Compose init container creates
+the file automatically; the application startup fixes its ownership and then
+runs Node as the non-root `node` user. No `chmod`, `chown`, data directory, or
+manual database creation is required.
 Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
 overload/server errors retry across keys and cool down that model/key for 30
 seconds, using the model's configured `cooldown_seconds` value. Daily quota
