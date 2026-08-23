@@ -61,8 +61,9 @@ restarts, recreations, and image upgrades. Compose mounts the deployment
 directory so SQLite's database, WAL, and journal files all remain beside the
 database. The image startup creates the file when needed, fixes only the
 database-file ownership, and then runs Node as the deployment directory's
-non-root owner. No `chmod`, `chown`, data directory, or manual database
-creation is required.
+non-root owner. The `:Z` mount label also handles SELinux hosts such as
+Fedora/RHEL, where an unlabeled bind mount can make SQLite appear read-only.
+No `chmod`, `chown`, data directory, or manual database creation is required.
 Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
 overload/server errors retry across keys and cool down that model/key for 30
 seconds, using the model's configured `cooldown_seconds` value. Daily quota

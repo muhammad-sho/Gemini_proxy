@@ -6,7 +6,7 @@ services:
     ports:
       - "18765:18765"
     volumes:
-      - ./:/data
+      - ./:/data:Z
     environment:
       PORT: 18765
       DB_PATH: /data/local-gemini-proxy.db
