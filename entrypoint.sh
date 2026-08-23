@@ -19,8 +19,12 @@ dir_uid=$(stat -c '%u' "$db_dir")
 dir_gid=$(stat -c '%g' "$db_dir")
 
 if [ "$dir_uid" = "0" ]; then
-  echo "The deployment directory is owned by root. Run Docker as the normal directory owner." >&2
-  exit 1
+  # A directory created with sudo is commonly root-owned. The image starts
+  # as root only long enough to make the mounted SQLite directory writable by
+  # the unprivileged node user, then drops privileges before starting Node.
+  dir_uid=1000
+  dir_gid=1000
+  chown "$dir_uid:$dir_gid" "$db_dir"
 fi
 
 chown "$dir_uid:$dir_gid" "$db_path"

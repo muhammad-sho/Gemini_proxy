@@ -59,9 +59,9 @@ model. A limit or cooldown of `0` means unlimited or disabled.
 SQLite is stored directly at `./local-gemini-proxy.db` and survives container
 restarts, recreations, and image upgrades. Compose mounts the deployment
 directory so SQLite's database, WAL, and journal files all remain beside the
-database. The image startup creates the file when needed, fixes only the
-database-file ownership, and then runs Node as the deployment directory's
-non-root owner. The `:Z` mount label also handles SELinux hosts such as
+database. The image startup creates the file when needed, makes the mounted
+directory writable when it is root-owned, and then runs Node as an
+unprivileged user. The `:Z` mount label also handles SELinux hosts such as
 Fedora/RHEL, where an unlabeled bind mount can make SQLite appear read-only.
 No `chmod`, `chown`, data directory, or manual database creation is required.
 Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
