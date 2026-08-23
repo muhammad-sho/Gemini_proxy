@@ -9,6 +9,7 @@ const DB_PATH = process.env.DB_PATH || "./local-gemini-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
+const TRANSIENT_COOLDOWN_SECONDS = 60;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -17,6 +18,8 @@ const db = new DatabaseSync(DB_PATH);
 try { fs.chmodSync(DB_PATH, 0o600); } catch {}
 db.exec(`
   PRAGMA journal_mode = WAL;
+  PRAGMA busy_timeout = 5000;
+  PRAGMA synchronous = NORMAL;
   CREATE TABLE IF NOT EXISTS api_keys (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
@@ -59,17 +62,15 @@ db.exec(`
     cooldown_until INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (model, key_id)
   );
+  CREATE TABLE IF NOT EXISTS app_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_requests_model_key_success_time ON requests(model, key_id, status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_requests_model_success_time ON requests(model, status, created_at);
 `);
 
 try { db.exec("ALTER TABLE models ADD COLUMN cooldown_seconds INTEGER NOT NULL DEFAULT 0"); } catch {}
-
-const insertDefaultModel = db.prepare(
-  "INSERT OR IGNORE INTO models (name, enabled, rpm_limit, rpd_limit, cooldown_seconds) VALUES (?, 1, 0, 0, ?)",
-);
-for (const model of (process.env.DEFAULT_MODELS || "").split(",")) {
-  if (model.trim()) insertDefaultModel.run(model.trim(), Number(process.env.DEFAULT_COOLDOWN_SECONDS || 60));
-}
-const modelKeyOffsets = new Map();
 
 function json(response, status, value) {
   const body = JSON.stringify(value);
@@ -195,6 +196,15 @@ function modelAllowed(model) {
   return db.prepare("SELECT * FROM models WHERE name = ? AND enabled = 1").get(model);
 }
 
+function setMeta(key, value) {
+  db.prepare("INSERT INTO app_meta (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value")
+    .run(key, String(value));
+}
+
+function getMeta(key) {
+  return db.prepare("SELECT value FROM app_meta WHERE key = ?").get(key)?.value || null;
+}
+
 function pacificDayStart(now = Date.now()) {
   const dateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit",
@@ -212,16 +222,16 @@ function pacificDayStart(now = Date.now()) {
 
 function limitReached(model, keyId) {
   const now = Date.now();
-  const minute = db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND key_id = ? AND created_at >= ?").get(model, keyId, now - 60_000).count;
-  const day = db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND key_id = ? AND created_at >= ?").get(model, keyId, pacificDayStart(now)).count;
+  const minute = db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND key_id = ? AND status >= 200 AND status < 300 AND created_at >= ?").get(model, keyId, now - 60_000).count;
+  const day = db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND key_id = ? AND status >= 200 AND status < 300 AND created_at >= ?").get(model, keyId, pacificDayStart(now)).count;
   return { minute, day };
 }
 
 function modelUsage(model) {
   const now = Date.now();
   return {
-    minute: db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND created_at >= ?").get(model, now - 60_000).count,
-    day: db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND created_at >= ?").get(model, pacificDayStart(now)).count,
+    minute: db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ?").get(model, now - 60_000).count,
+    day: db.prepare("SELECT COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ?").get(model, pacificDayStart(now)).count,
   };
 }
 
@@ -231,13 +241,14 @@ function usageStats() {
     SELECT r.model, r.key_id, k.label, substr(k.api_key, 1, 6) || '...' AS masked,
            COUNT(*) AS today, MAX(r.created_at) AS last_request
     FROM requests r LEFT JOIN api_keys k ON k.id = r.key_id
-    WHERE r.created_at >= ?
+    WHERE r.status >= 200 AND r.status < 300 AND r.created_at >= ?
     GROUP BY r.model, r.key_id
     ORDER BY r.model, k.label
   `).all(start);
 }
 
 function recordRequest(model, keyId, status) {
+  if (status < 200 || status >= 300) return;
   db.prepare("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
   db.prepare("DELETE FROM requests WHERE created_at < ?").run(Date.now() - 86_400_000);
 }
@@ -316,7 +327,7 @@ function classifyUpstream(result) {
   try { error = JSON.parse(result.body.toString("utf8")).error || {}; } catch {}
   const text = `${error.status || ""} ${error.code || ""} ${error.message || ""}`.toLowerCase();
   if (text.includes("api_key_invalid") || text.includes("invalid api key") || result.status === 401) return "invalid_key";
-  if (text.includes("quota_exceeded") || text.includes("daily quota") || text.includes("requests per day") || text.includes("rpd") || text.includes("current quota")) return "daily_quota";
+  if (text.includes("quota_exceeded") || text.includes("daily quota") || text.includes("requests per day") || text.includes("per_day") || text.includes("rpd") || text.includes("current quota") || text.includes("resource_exhausted") || text.includes("quota failure")) return "daily_quota";
   if ([408, 429, 500, 502, 503, 504].includes(result.status)) return "transient";
   return "permanent";
 }
@@ -324,6 +335,59 @@ function classifyUpstream(result) {
 function setCooldownUntil(model, keyId, timestamp) {
   db.prepare("INSERT INTO model_key_state (model,key_id,cooldown_until) VALUES (?,?,?) ON CONFLICT(model,key_id) DO UPDATE SET cooldown_until=excluded.cooldown_until")
     .run(model, keyId, timestamp);
+}
+
+function syncModelsFromGemini(result) {
+  let payload;
+  try { payload = JSON.parse(result.body.toString("utf8")); } catch { return false; }
+  if (!Array.isArray(payload.models)) return false;
+  const names = [...new Set(payload.models
+    .map((model) => String(model.name || "").replace(/^models\//, "").trim())
+    .filter(Boolean))];
+  const insert = db.prepare("INSERT INTO models (name,enabled,rpm_limit,rpd_limit,cooldown_seconds) VALUES (?,1,0,0,0) ON CONFLICT(name) DO NOTHING");
+  for (const name of names) insert.run(name);
+  if (names.length) {
+    const placeholders = names.map(() => "?").join(",");
+    db.prepare(`DELETE FROM models WHERE name NOT IN (${placeholders})`).run(...names);
+  } else {
+    db.exec("DELETE FROM models");
+  }
+  return true;
+}
+
+async function refreshModels(request) {
+  setMeta("models_checked_at", Date.now());
+  const keys = enabledKeys();
+  let lastResult = null;
+  for (const key of keys) {
+    try {
+      const result = await forwardToGemini(request, Buffer.alloc(0), key.api_key);
+      lastResult = result;
+      if (result.status >= 200 && result.status < 300) {
+        let payload;
+        try { payload = JSON.parse(result.body.toString("utf8")); } catch { payload = null; }
+        if (payload && Array.isArray(payload.models)) {
+          const allModels = [...payload.models];
+          let pageToken = payload.nextPageToken;
+          for (let page = 0; page < 20 && pageToken; page += 1) {
+            const pageUrl = new URL(request.url, "http://localhost");
+            pageUrl.searchParams.set("pageToken", pageToken);
+            const pageResult = await forwardToGemini({ ...request, url: pageUrl.pathname + pageUrl.search }, Buffer.alloc(0), key.api_key);
+            if (pageResult.status < 200 || pageResult.status >= 300) break;
+            let pagePayload;
+            try { pagePayload = JSON.parse(pageResult.body.toString("utf8")); } catch { pagePayload = null; }
+            if (!pagePayload || !Array.isArray(pagePayload.models)) break;
+            allModels.push(...pagePayload.models);
+            pageToken = pagePayload.nextPageToken;
+          }
+          if (syncModelsFromGemini({ body: Buffer.from(JSON.stringify({ models: allModels })) })) return result;
+        }
+      }
+    } catch (error) {
+      console.error(`[Models] key ${key.id}: ${error.message}`);
+    }
+  }
+  return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No enabled Gemini API keys" })) };
 }
 
 async function handleGemini(request, response, model) {
@@ -336,18 +400,25 @@ async function handleGemini(request, response, model) {
   const keys = enabledKeys().filter((key) => !keyIsCoolingDown(model, key.id));
   if (!keys.length) return json(response, 503, { error: "No enabled Gemini API keys" });
 
-  const allowedKeys = keys.filter((key) => {
+  const allowedKeys = [];
+  for (const key of keys) {
     const usage = limitReached(model, key.id);
-    return !(settings.rpm_limit > 0 && usage.minute >= settings.rpm_limit) &&
-      !(settings.rpd_limit > 0 && usage.day >= settings.rpd_limit);
-  });
+    if (settings.rpd_limit > 0 && usage.day >= settings.rpd_limit) {
+      setCooldownUntil(model, key.id, nextPacificReset());
+      continue;
+    }
+    if (settings.rpm_limit > 0 && usage.minute >= settings.rpm_limit) {
+      setCooldown(model, key.id, TRANSIENT_COOLDOWN_SECONDS);
+      continue;
+    }
+    allowedKeys.push({ ...key, usage });
+  }
   if (!allowedKeys.length) return json(response, 429, { error: "Model limit reached for all available keys" });
 
-  const start = (modelKeyOffsets.get(model) || 0) % allowedKeys.length;
-  modelKeyOffsets.set(model, start + 1);
+  allowedKeys.sort((left, right) => left.usage.day - right.usage.day || left.usage.minute - right.usage.minute || left.id - right.id);
   let lastResult;
   for (let attempt = 0; attempt < allowedKeys.length; attempt += 1) {
-    const selected = allowedKeys[(start + attempt) % allowedKeys.length];
+    const selected = allowedKeys[attempt];
     try {
       const result = await forwardToGemini(request, body, selected.api_key);
       lastResult = result;
@@ -357,14 +428,13 @@ async function handleGemini(request, response, model) {
         setCooldownUntil(model, selected.id, nextPacificReset());
         if (attempt < allowedKeys.length - 1) continue;
       } else if (classification === "transient" || classification === "invalid_key") {
-        setCooldown(model, selected.id, settings.cooldown_seconds);
+        setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS);
         if (attempt < allowedKeys.length - 1) continue;
       }
       return returnUpstream(response, result);
     } catch (error) {
       console.error(`[Gemini] key ${selected.id}: ${error.message}`);
-      recordRequest(model, selected.id, 502);
-      setCooldown(model, selected.id, settings.cooldown_seconds);
+      setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS);
     }
   }
   if (lastResult) {
@@ -374,48 +444,7 @@ async function handleGemini(request, response, model) {
 }
 
 const dashboard = fs.readFileSync("dashboard.html", "utf8");
-const dashboardPage = dashboard
-  .replace("alert('Save this client key now:\\n\\n'+d.clientApiKey);", "showClientKey(d.clientApiKey);")
-  .replace("</body>", `<script>
-    let generatedClientKey = "";
-    function showClientKey(key) {
-      generatedClientKey = key;
-      const box = document.querySelector("#generatedClientKey") || document.createElement("div");
-      box.id = "generatedClientKey";
-      box.style.cssText = "background:#fff8df;border:1px solid #e4c766;padding:14px;margin:12px 0;word-break:break-all";
-      box.innerHTML = "<strong>Save this client key now. It will not be shown again.</strong><br>";
-      const value = document.createElement("code");
-      value.textContent = key;
-      box.appendChild(value);
-      box.appendChild(document.createElement("br"));
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = "Copy key";
-      button.onclick = async () => {
-        let copied = false;
-        try {
-          if (navigator.clipboard) {
-            await navigator.clipboard.writeText(generatedClientKey);
-            copied = true;
-          }
-        } catch {}
-        if (!copied) {
-          const input = document.createElement("textarea");
-          input.value = generatedClientKey;
-          input.style.position = "fixed";
-          input.style.opacity = "0";
-          document.body.appendChild(input);
-          input.focus();
-          input.select();
-          copied = document.execCommand("copy");
-          input.remove();
-        }
-        button.textContent = copied ? "Copied" : "Copy failed - select the key manually";
-      };
-      box.appendChild(button);
-      document.body.prepend(box);
-    }
-  </script></body>`);
+const dashboardPage = dashboard;
 
 async function handleRequest(request, response) {
   securityHeaders(response);
@@ -423,9 +452,7 @@ async function handleRequest(request, response) {
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
     if (!localKeyIsValid(request)) return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
-    const models = db.prepare("SELECT name FROM models WHERE enabled = 1 ORDER BY name").all()
-      .map(({ name }) => ({ name: `models/${name}`, displayName: name, supportedGenerationMethods: ["generateContent"] }));
-    return json(response, 200, { models });
+    return returnUpstream(response, await refreshModels(request));
   }
   if (url.pathname === "/" && request.method === "GET") {
     if (!hasAdmin()) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(setupPage); }
@@ -465,8 +492,13 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked FROM client_keys ORDER BY id").all();
-    const models = db.prepare("SELECT * FROM models ORDER BY name").all().map(m => ({ ...m, ...modelUsage(m.name) }));
-    return json(response, 200, { keys, clientKeys, models, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles" });
+    const models = db.prepare("SELECT * FROM models ORDER BY name").all().map(m => ({ ...m, cooldown_seconds: TRANSIENT_COOLDOWN_SECONDS, ...modelUsage(m.name) }));
+    return json(response, 200, { keys, clientKeys, models, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at") });
+  }
+  if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
+    const result = await refreshModels({ method: "GET", url: "/v1beta/models", headers: {} });
+    if (result.status >= 200 && result.status < 300) return json(response, 200, { ok: true });
+    return returnUpstream(response, result);
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
@@ -490,18 +522,16 @@ async function handleRequest(request, response) {
     db.prepare("DELETE FROM api_keys WHERE id=?").run(keyId);
     return json(response, 200, { ok: true });
   }
-  if (url.pathname === "/api/admin/models" && request.method === "POST") {
-    let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    if (!body.name) return json(response, 400, { error: "Model name is required" });
-    db.prepare("INSERT OR REPLACE INTO models (name,enabled,rpm_limit,rpd_limit,cooldown_seconds) VALUES (?,?,?,?,?)").run(String(body.name), 1, Math.max(0, Number(body.rpm) || 0), Math.max(0, Number(body.rpd) || 0), Math.max(0, Number(body.cooldown) || 0)); return json(response, 201, { ok: true });
-  }
   const modelMatch = url.pathname.match(/^\/api\/admin\/models\/([^/]+)$/);
-  if (modelMatch && request.method === "PATCH") { const body = JSON.parse((await readBody(request)).toString()); db.prepare("UPDATE models SET enabled=? WHERE name=?").run(body.enabled ? 1 : 0, decodeURIComponent(modelMatch[1])); return json(response, 200, { ok: true }); }
-  if (modelMatch && request.method === "DELETE") {
+  if (modelMatch && request.method === "PATCH") {
+    const body = JSON.parse((await readBody(request)).toString());
     const model = decodeURIComponent(modelMatch[1]);
-    db.prepare("DELETE FROM requests WHERE model=?").run(model);
-    db.prepare("DELETE FROM model_key_state WHERE model=?").run(model);
-    db.prepare("DELETE FROM models WHERE name=?").run(model);
+    if (typeof body.enabled === "boolean") db.prepare("UPDATE models SET enabled=? WHERE name=?").run(body.enabled ? 1 : 0, model);
+    if (body.rpm !== undefined || body.rpd !== undefined) {
+      const current = db.prepare("SELECT rpm_limit,rpd_limit FROM models WHERE name=?").get(model);
+      if (!current) return json(response, 404, { error: "Model is not synchronized" });
+      db.prepare("UPDATE models SET rpm_limit=?,rpd_limit=? WHERE name=?").run(Math.max(0, Number(body.rpm ?? current.rpm_limit) || 0), Math.max(0, Number(body.rpd ?? current.rpd_limit) || 0), model);
+    }
     return json(response, 200, { ok: true });
   }
 

@@ -51,10 +51,16 @@ curl -X POST \
   -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
 ```
 
-The proxy adds `x-goog-api-key` upstream. Each model has its own round-robin
-cursor. RPM/RPD limits and cooldowns are tracked independently for every
-model/key pair, so a key cooling down for one model can still serve another
-model. A limit or cooldown of `0` means unlimited or disabled.
+The proxy preserves the Gemini request and changes only its upstream API key.
+For each model, it selects the least-used eligible key based on successful
+requests, independently of every other model. Failed requests are not counted.
+Transient overloads use a 60-second per-model/key cooldown; quota/limit
+failures cool down until the next Pacific daily reset.
+
+Models are never added manually. Calling `/v1beta/models` checks Google's real
+models endpoint, refreshes the local model list, and records the exact check
+time shown in the dashboard. Models no longer returned by Google are removed
+from the local list.
 
 For n8n's **Google Gemini(PaLM) Api** credential, set `Host` to the proxy
 URL, for example `http://192.168.100.14:18765`, and set `API Key` to the
