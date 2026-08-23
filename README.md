@@ -221,6 +221,11 @@ n8n makes during setup) return instantly instead of waiting for Google.
 The proxy also removes models that Google no longer offers and records the
 sync time shown in the dashboard.
 
+Removing a model from the list never deletes its usage history: if Google
+temporarily drops a model, its per-key usage and cooldown data stay visible
+until the normal daily reset clears them, and requests to that model are
+still forwarded to Google (Google decides whether to serve it).
+
 ---
 
 # Database

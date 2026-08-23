@@ -363,14 +363,11 @@ function syncModelsFromGemini(result) {
   const names = [...new Set(payload.models
     .map((model) => String(model.name || "").replace(/^models\//, "").trim())
     .filter(Boolean))];
+  if (!names.length) return false;
   const insert = db.prepare("INSERT INTO models (name) VALUES (?) ON CONFLICT(name) DO NOTHING");
   for (const name of names) insert.run(name);
-  if (names.length) {
-    const placeholders = names.map(() => "?").join(",");
-    db.prepare(`DELETE FROM models WHERE name NOT IN (${placeholders})`).run(...names);
-  } else {
-    db.exec("DELETE FROM models");
-  }
+  const placeholders = names.map(() => "?").join(",");
+  db.prepare(`DELETE FROM models WHERE name NOT IN (${placeholders})`).run(...names);
   return true;
 }
 
