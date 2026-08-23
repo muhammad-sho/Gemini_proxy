@@ -184,6 +184,10 @@ Key 2 + gemini-2.0-flash-lite
 A limit reached on one combination never affects the others. Only successful
 requests count — failures do not.
 
+At every reset moment (midnight Pacific time) the proxy clears the previous
+day's usage records and expires finished cooldowns, so all keys start the new
+day at zero automatically — no restart needed.
+
 ---
 
 # Cooldowns and Retries

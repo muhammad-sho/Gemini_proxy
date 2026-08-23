@@ -355,6 +355,28 @@
       font-size: 14px;
     }
 
+    /* Code Blocks */
+    .code-block { position: relative; }
+    .code-block pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      background: var(--surface-alt);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+      white-space: pre;
+      color: var(--text);
+    }
+    .copy-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
     @media (max-width: 768px) {
       .metrics-grid { grid-template-columns: 1fr 1fr; }
       .form-flex { flex-direction: column; }
@@ -386,6 +408,7 @@
     <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -484,6 +507,102 @@
     </div>
   </div>
 
+  <!-- How to Use Panel -->
+  <div id="panel-howto" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Connect any app</h2>
+      <p class="section-desc">Any tool that speaks the Gemini API works — automations, SDKs, scripts, chat UIs. Change only two things: the URL points to this server, and the key is one of your client keys.</p>
+      <div class="info-strip" style="margin-bottom:0">
+        <div><strong>Proxy URL:</strong> <code style="font-family:'JetBrains Mono',monospace" id="howto-origin">—</code></div>
+        <div><strong>Auth header:</strong> <code style="font-family:'JetBrains Mono',monospace">x-proxy-api-key</code></div>
+        <div><strong>Your keys:</strong> generate them in the Client Keys tab</div>
+      </div>
+    </div>
+
+    <div class="section-box">
+      <h2 class="section-title">Send a chat / text request</h2>
+      <div class="code-block">
+        <button class="btn-tbl copy-btn" onclick="copyPre(this)">Copy</button>
+        <pre>curl -X POST http://<span class="howto-host"></span>/v1beta/models/gemini-2.0-flash:generateContent \
+  -H "Content-Type: application/json" \
+  -H "x-proxy-api-key: YOUR-CLIENT-KEY" \
+  -d '{
+    "contents": [
+      {
+        "parts": [
+          { "text": "Say hello" }
+        ]
+      }
+    ]
+  }'</pre>
+      </div>
+      <p class="section-desc" style="margin-top:12px">Swap <code>gemini-2.0-flash</code> for any model from the list below. The response is Google's response, unchanged.</p>
+    </div>
+
+    <div class="section-box">
+      <h2 class="section-title">List available models</h2>
+      <div class="code-block">
+        <button class="btn-tbl copy-btn" onclick="copyPre(this)">Copy</button>
+        <pre>curl http://<span class="howto-host"></span>/v1beta/models \
+  -H "x-proxy-api-key: YOUR-CLIENT-KEY"</pre>
+      </div>
+      <p class="section-desc" style="margin-top:12px">Answers instantly from the local cache and refreshes from Google in the background once a day. The sync time is shown on the Overview tab.</p>
+    </div>
+
+    <div class="section-box">
+      <h2 class="section-title">JavaScript (fetch)</h2>
+      <div class="code-block">
+        <button class="btn-tbl copy-btn" onclick="copyPre(this)">Copy</button>
+        <pre>const response = await fetch("http://<span class="howto-host"></span>/v1beta/models/gemini-2.0-flash:generateContent", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "x-proxy-api-key": process.env.PROXY_KEY
+  },
+  body: JSON.stringify({
+    contents: [{ parts: [{ text: "Say hello" }] }]
+  })
+});
+const data = await response.json();
+console.log(data.candidates[0].content.parts[0].text);</pre>
+      </div>
+    </div>
+
+    <div class="section-box">
+      <h2 class="section-title">Python (requests)</h2>
+      <div class="code-block">
+        <button class="btn-tbl copy-btn" onclick="copyPre(this)">Copy</button>
+        <pre>import requests
+
+response = requests.post(
+    "http://<span class="howto-host"></span>/v1beta/models/gemini-2.0-flash:generateContent",
+    headers={"x-proxy-api-key": PROXY_KEY},
+    json={"contents": [{"parts": [{"text": "Say hello"}]}]},
+)
+data = response.json()
+print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
+      </div>
+    </div>
+
+    <div class="section-box">
+      <h2 class="section-title">Response codes</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Status</th><th>Meaning</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><span class="status-tag tag-ready">200</span></td><td>Success — Google's answer is returned unchanged.</td></tr>
+            <tr><td><span class="status-tag tag-off">401</span></td><td>The client key is missing or invalid. Check the Client Keys tab.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No usable Gemini key right now — none configured or all are cooling down.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">502</span></td><td>Every configured Gemini key failed for this request. Check cooldowns on the Overview tab.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="section-desc" style="margin-top:12px">Tip: when a key hits a limit or an outage, the proxy already retries the request on another key before answering.</p>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -540,6 +659,11 @@
       input.remove();
     }
     button.textContent = copied ? 'Copied!' : 'Copy failed';
+  }
+
+  function copyPre(button) {
+    const pre = button.parentElement.querySelector('pre');
+    copyText(pre.textContent, button);
   }
 
   function showClientKey(key) {
@@ -618,7 +742,7 @@
   }
 
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'client-keys', 'gemini-keys'];
+    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'howto'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -694,6 +818,11 @@
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
   initActiveTab();
+
+  const proxyHost = location.host || 'localhost:18765';
+  document.getElementById('howto-origin').textContent = location.origin;
+  document.querySelectorAll('.howto-host').forEach(el => { el.textContent = proxyHost; });
+
   load();
   setInterval(load, 5000);
 </script>

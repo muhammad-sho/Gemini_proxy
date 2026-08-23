@@ -261,7 +261,18 @@ function usageStats() {
 function recordRequest(model, keyId, status) {
   if (status < 200 || status >= 300) return;
   db.prepare("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
-  db.prepare("DELETE FROM requests WHERE created_at < ?").run(Date.now() - 86_400_000);
+  db.prepare("DELETE FROM requests WHERE created_at < ?").run(pacificDayStart());
+}
+
+let lastSweptUsageDay = null;
+function sweepDailyReset() {
+  const today = pacificDayStart();
+  if (lastSweptUsageDay !== null && today !== lastSweptUsageDay) {
+    console.log("[Usage] Pacific midnight reset - cleared previous day's usage and expired cooldowns");
+  }
+  lastSweptUsageDay = today;
+  db.prepare("DELETE FROM requests WHERE created_at < ?").run(today);
+  db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now());
 }
 
 function setCooldown(model, keyId, seconds, reason) {
@@ -585,6 +596,9 @@ const server = http.createServer((request, response) => {
     else response.destroy();
   });
 });
+
+sweepDailyReset();
+setInterval(() => { try { sweepDailyReset(); } catch (error) { console.error(`[Usage] sweep failed: ${error.message}`); } }, 60_000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`Gemini proxy listening on port ${PORT}`);
