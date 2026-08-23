@@ -255,18 +255,26 @@ function keyIsCoolingDown(model, keyId) {
   return (db.prepare("SELECT cooldown_until FROM model_key_state WHERE model = ? AND key_id = ?").get(model, keyId)?.cooldown_until || 0) > Date.now();
 }
 
-function forwardToGemini(model, body, key) {
+function forwardToGemini(request, body, key) {
   return new Promise((resolve, reject) => {
-    const request = https.request({
-      hostname: "generativelanguage.googleapis.com",
-      path: `/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-      method: "POST",
+    const incomingUrl = new URL(request.url, "http://localhost");
+    const upstreamUrl = new URL("https://generativelanguage.googleapis.com");
+    upstreamUrl.pathname = incomingUrl.pathname;
+    upstreamUrl.search = incomingUrl.search;
+    if (upstreamUrl.searchParams.has("key")) upstreamUrl.searchParams.set("key", key);
+    const headers = {};
+    for (const name of ["content-type", "accept", "user-agent", "accept-encoding", "x-goog-api-client", "x-goog-user-project"]) {
+      if (request.headers[name]) headers[name] = request.headers[name];
+    }
+    headers["content-length"] = body.length;
+    headers["x-goog-api-key"] = key;
+    const upstreamRequest = https.request({
+      hostname: upstreamUrl.hostname,
+      port: upstreamUrl.port || 443,
+      path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
+      method: request.method,
       timeout: REQUEST_TIMEOUT_MS,
-      headers: {
-        "Content-Type": "application/json",
-        "Content-Length": body.length,
-        "x-goog-api-key": key,
-      },
+      headers,
     }, (response) => {
       const chunks = [];
       let bytes = 0;
@@ -285,9 +293,9 @@ function forwardToGemini(model, body, key) {
         });
       });
     });
-    request.on("timeout", () => request.destroy(new Error("Gemini request timed out")));
-    request.on("error", reject);
-    request.end(body);
+    upstreamRequest.on("timeout", () => upstreamRequest.destroy(new Error("Gemini request timed out")));
+    upstreamRequest.on("error", reject);
+    upstreamRequest.end(body);
   });
 }
 
@@ -341,7 +349,7 @@ async function handleGemini(request, response, model) {
   for (let attempt = 0; attempt < allowedKeys.length; attempt += 1) {
     const selected = allowedKeys[(start + attempt) % allowedKeys.length];
     try {
-      const result = await forwardToGemini(model, body, selected.api_key);
+      const result = await forwardToGemini(request, body, selected.api_key);
       lastResult = result;
       recordRequest(model, selected.id, result.status);
       const classification = classifyUpstream(result);
