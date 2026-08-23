@@ -383,10 +383,10 @@
 
   <!-- Navigation -->
   <nav class="nav-row">
-    <button class="nav-tab active" onclick="showPanel('overview',this)">Overview</button>
-    <button class="nav-tab" onclick="showPanel('client-keys',this)">Client Keys</button>
-    <button class="nav-tab" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
-    <button class="nav-tab" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
+    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
+    <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="usage" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -625,13 +625,36 @@
       : '<tr><td colspan="5" class="empty-notice">No requests recorded in the current day window.</td></tr>';
   }
 
-  function showPanel(name, tabEl) {
+  function showPanel(name, tabEl, updateHash = true) {
+    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'usage'];
+    if (!validTabs.includes(name)) name = 'overview';
+
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-    const target = document.getElementById('panel-' + name);
-    if (target) target.classList.add('active');
-    if (tabEl) tabEl.classList.add('active');
+
+    const targetPanel = document.getElementById('panel-' + name);
+    if (targetPanel) targetPanel.classList.add('active');
+
+    const targetTab = tabEl || document.querySelector(`.nav-tab[data-tab="${name}"]`);
+    if (targetTab) targetTab.classList.add('active');
+
+    localStorage.setItem('gemini_proxy_tab', name);
+    if (updateHash && window.location.hash !== '#' + name) {
+      history.replaceState(null, '', '#' + name);
+    }
   }
+
+  function initActiveTab() {
+    const hash = window.location.hash.replace(/^#/, '');
+    const saved = localStorage.getItem('gemini_proxy_tab');
+    const initial = hash || saved || 'overview';
+    showPanel(initial, null, true);
+  }
+
+  window.addEventListener('hashchange', () => {
+    const hash = window.location.hash.replace(/^#/, '');
+    if (hash) showPanel(hash, null, false);
+  });
 
   async function load() {
     try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
@@ -644,7 +667,7 @@
       const data = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: form.get('label') }) });
       showClientKey(data.clientApiKey);
       event.target.reset();
-      showPanel('client-keys', document.querySelectorAll('.nav-tab')[1]);
+      showPanel('client-keys');
       load();
     } catch (err) { alert(err.message); }
   };
@@ -655,6 +678,7 @@
       const form = new FormData(event.target);
       await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: form.get('key') }) });
       event.target.reset();
+      showPanel('gemini-keys');
       load();
     } catch (err) { alert(err.message); }
   };
@@ -665,8 +689,9 @@
   async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
+  initActiveTab();
   load();
-  setInterval(load, 10000);
+  setInterval(load, 5000);
 </script>
 </body>
 </html>

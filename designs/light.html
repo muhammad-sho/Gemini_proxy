@@ -367,10 +367,10 @@ body{
 
   <!-- Navigation -->
   <nav class="nav-row">
-    <button class="nav-tab active" onclick="showPanel('overview',this)">Overview</button>
-    <button class="nav-tab" onclick="showPanel('client-keys',this)">Client Keys</button>
-    <button class="nav-tab" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
-    <button class="nav-tab" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
+    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview</button>
+    <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
+    <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="usage" onclick="showPanel('usage',this)">Usage & Cooldowns</button>
   </nav>
 
   <!-- Overview Panel -->
@@ -583,7 +583,7 @@ document.getElementById('clientKeyForm').onsubmit = async e => {
     const d = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: new FormData(e.target).get('label') }) });
     showClientKey(d.clientApiKey);
     e.target.reset();
-    showPanel('client-keys', document.querySelectorAll('.nav-tab')[1]);
+    showPanel('client-keys');
     load();
   } catch (err) { alert(err.message); }
 };
@@ -604,8 +604,9 @@ async function toggleKey(id, en) { await api('/api/admin/keys/' + id, { method: 
 async function deleteKey(id) { if (confirm('Delete Gemini key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
 async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 
+initActiveTab();
 load();
-setInterval(load, 10000);
+setInterval(load, 5000);
 </script>
 </body>
 </html>
