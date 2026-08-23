@@ -9,7 +9,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Automatic retry on another key when one fails
 * Automatic cooldown when a key is overloaded or out of daily quota
 * Per-key and per-model usage tracking in a web dashboard
-* Automatic model discovery from Google (`/v1beta/models`)
+* Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
 * Web dashboard for managing keys, usage, and cooldown status
 * SQLite storage — no external database needed
 * Docker and Docker Compose support
@@ -202,10 +202,20 @@ This prevents a temporarily limited key from repeatedly receiving requests.
 
 # Models
 
-Models are **not** configured manually. Whenever anything calls
-`GET /v1beta/models`, the proxy fetches Google's real model list, refreshes
-its local list, removes models that no longer exist, and records the sync
-time shown in the dashboard.
+Models are **not** configured manually. The model list is discovered from
+Google and **cached locally**, so calls to `GET /v1beta/models` (like the ones
+n8n makes during setup) return instantly instead of waiting for Google.
+
+* First call with no cache: fetches from Google once, then caches.
+* Every later call: served from cache — no delay.
+* The cache refreshes itself in the background when it gets older than 24
+  hours (`MODELS_CACHE_TTL_HOURS`, see settings). Your request is never
+  delayed by a refresh.
+* Want to force it? Use the **Refresh** button next to *Model Sync* on the
+  dashboard's Overview tab.
+
+The proxy also removes models that Google no longer offers and records the
+sync time shown in the dashboard.
 
 ---
 
@@ -243,6 +253,7 @@ dashboard setup. Add these to the `environment:` section of
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
+| `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
 
 See `.env.example` for a starting point.
 

@@ -410,7 +410,8 @@
     </div>
     <div class="info-strip">
       <div><strong>Reset Schedule:</strong> <span id="ov-reset">Loading schedule...</span></div>
-      <div><strong>Model Sync:</strong> <span id="ov-mc">—</span></div>
+      <div style="display:flex;align-items:center;gap:8px"><strong>Model Sync:</strong> <span id="ov-mc">—</span>
+        <button class="btn-tbl" id="refreshModelsBtn" onclick="refreshModels()">Refresh</button></div>
     </div>
     <div class="section-box">
       <h2 class="section-title">Model Usage &amp; Cooldown Status</h2>
@@ -649,6 +650,18 @@
 
   async function load() {
     try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+  }
+
+  async function refreshModels() {
+    const btn = document.getElementById('refreshModelsBtn');
+    btn.disabled = true;
+    btn.textContent = 'Refreshing...';
+    try {
+      await api('/api/admin/models/refresh', { method: 'POST' });
+      load();
+    } catch (err) { alert(err.message); }
+    btn.disabled = false;
+    btn.textContent = 'Refresh';
   }
 
   document.getElementById('clientKeyForm').onsubmit = async (event) => {

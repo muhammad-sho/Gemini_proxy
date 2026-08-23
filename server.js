@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
+const MODELS_CACHE_TTL_MS = Number(process.env.MODELS_CACHE_TTL_HOURS || 24) * 60 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
 const sessions = new Map();
 const loginAttempts = new Map();
@@ -362,8 +363,28 @@ function syncModelsFromGemini(result) {
   return true;
 }
 
+function buildModelsPayload(allModels) {
+  const seen = new Set();
+  const models = [];
+  for (const model of allModels) {
+    const name = String(model?.name || "").replace(/^models\//, "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    models.push({ ...model, name });
+  }
+  models.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  return { models };
+}
+
+let modelsRefreshInFlight = null;
+function refreshModelsOnce(request) {
+  if (!modelsRefreshInFlight) {
+    modelsRefreshInFlight = refreshModels(request).finally(() => { modelsRefreshInFlight = null; });
+  }
+  return modelsRefreshInFlight;
+}
+
 async function refreshModels(request) {
-  setMeta("models_checked_at", Date.now());
   const keys = enabledKeys();
   let lastResult = null;
   for (const key of keys) {
@@ -387,7 +408,13 @@ async function refreshModels(request) {
             allModels.push(...pagePayload.models);
             pageToken = pagePayload.nextPageToken;
           }
-          if (syncModelsFromGemini({ body: Buffer.from(JSON.stringify({ models: allModels })) })) return result;
+          const cachedPayload = buildModelsPayload(allModels);
+          if (cachedPayload.models.length) {
+            setMeta("models_cache", JSON.stringify(cachedPayload));
+            setMeta("models_checked_at", Date.now());
+            syncModelsFromGemini({ body: Buffer.from(JSON.stringify(cachedPayload)) });
+            return result;
+          }
         }
       }
     } catch (error) {
@@ -395,6 +422,23 @@ async function refreshModels(request) {
     }
   }
   return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No enabled Gemini API keys" })) };
+}
+
+function syntheticModelsRequest() {
+  return { url: "/v1beta/models?pageSize=1000", method: "GET", headers: {} };
+}
+
+async function handleModelsList(request, response) {
+  let cached = null;
+  try { cached = JSON.parse(getMeta("models_cache") || "null"); } catch {}
+  const checkedAt = Number(getMeta("models_checked_at") || 0);
+  if (cached && Array.isArray(cached.models) && cached.models.length) {
+    if (Date.now() - checkedAt >= MODELS_CACHE_TTL_MS) {
+      refreshModelsOnce(syntheticModelsRequest()).catch((error) => console.error(`[Models] background refresh failed: ${error.message}`));
+    }
+    return json(response, 200, cached);
+  }
+  return returnUpstream(response, await refreshModelsOnce(request));
 }
 
 async function handleGemini(request, response, model) {
@@ -442,7 +486,7 @@ async function handleRequest(request, response) {
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
     if (!localKeyIsValid(request)) return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
-    return returnUpstream(response, await refreshModels(request));
+    return handleModelsList(request, response);
   }
   if (url.pathname === "/" && request.method === "GET") {
     if (!hasAdmin()) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(setupPage); }
@@ -502,6 +546,11 @@ async function handleRequest(request, response) {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at") });
+  }
+  if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
+    const result = await refreshModelsOnce(syntheticModelsRequest());
+    const ok = result.status >= 200 && result.status < 300;
+    return json(response, ok ? 200 : 502, { ok, status: result.status });
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
