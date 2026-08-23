@@ -15,14 +15,22 @@ if [ ! -e "$db_path" ]; then
   touch "$db_path"
 fi
 
-chown node:node "$db_path"
+dir_uid=$(stat -c '%u' "$db_dir")
+dir_gid=$(stat -c '%g' "$db_dir")
+
+if [ "$dir_uid" = "0" ]; then
+  echo "The deployment directory is owned by root. Run Docker as the normal directory owner." >&2
+  exit 1
+fi
+
+chown "$dir_uid:$dir_gid" "$db_path"
 chmod 600 "$db_path"
 
 for sidecar in "${db_path}-wal" "${db_path}-shm"; do
   if [ -e "$sidecar" ]; then
-    chown node:node "$sidecar"
+    chown "$dir_uid:$dir_gid" "$sidecar"
     chmod 600 "$sidecar"
   fi
 done
 
-exec su-exec node:node node server.js
+exec su-exec "$dir_uid:$dir_gid" node server.js

@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
 
 const PORT = Number(process.env.PORT || 18765);
-const DB_PATH = process.env.DB_PATH || "./gemini-proxy.db";
+const DB_PATH = process.env.DB_PATH || "./local-gemini-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
