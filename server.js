@@ -111,7 +111,9 @@ function hashValue(value) {
 
 function localKeyIsValid(request) {
   const query = new URL(request.url, "http://localhost").searchParams;
-  const supplied = request.headers["x-proxy-api-key"] || query.get("key") || "";
+  const supplied = request.headers["x-proxy-api-key"] ||
+    request.headers["x-goog-api-key"] ||
+    query.get("key") || "";
   if (!supplied) return false;
   const hash = hashValue(supplied);
   return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ? AND enabled = 1").get(hash));
