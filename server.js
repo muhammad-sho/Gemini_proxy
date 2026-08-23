@@ -110,7 +110,8 @@ function hashValue(value) {
 }
 
 function localKeyIsValid(request) {
-  const supplied = request.headers["x-proxy-api-key"] || "";
+  const query = new URL(request.url, "http://localhost").searchParams;
+  const supplied = request.headers["x-proxy-api-key"] || query.get("key") || "";
   if (!supplied) return false;
   const hash = hashValue(supplied);
   return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ? AND enabled = 1").get(hash));
@@ -410,6 +411,12 @@ async function handleRequest(request, response) {
   securityHeaders(response);
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
+  if (url.pathname === "/v1beta/models" && request.method === "GET") {
+    if (!localKeyIsValid(request)) return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
+    const models = db.prepare("SELECT name FROM models WHERE enabled = 1 ORDER BY name").all()
+      .map(({ name }) => ({ name: `models/${name}`, displayName: name, supportedGenerationMethods: ["generateContent"] }));
+    return json(response, 200, { models });
+  }
   if (url.pathname === "/" && request.method === "GET") {
     if (!hasAdmin()) { response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return response.end(setupPage); }
     if (!dashboardSessionValid(request)) {
