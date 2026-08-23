@@ -1,15 +1,20 @@
 const http = require("node:http");
 const https = require("node:https");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
 
 const PORT = Number(process.env.PORT || 8080);
 const DB_PATH = process.env.DB_PATH || "./gemini-proxy.db";
 const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
-const sessions = new Set();
+const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const sessions = new Map();
+const loginAttempts = new Map();
 
 const db = new DatabaseSync(DB_PATH);
+try { fs.chmodSync(DB_PATH, 0o600); } catch {}
 db.exec(`
   PRAGMA journal_mode = WAL;
   CREATE TABLE IF NOT EXISTS api_keys (
@@ -75,6 +80,15 @@ function json(response, status, value) {
   response.end(body);
 }
 
+function securityHeaders(response) {
+  response.setHeader("X-Content-Type-Options", "nosniff");
+  response.setHeader("X-Frame-Options", "DENY");
+  response.setHeader("Referrer-Policy", "no-referrer");
+  response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  response.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  response.setHeader("Cache-Control", "no-store");
+}
+
 function readBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -105,7 +119,27 @@ function localKeyIsValid(request) {
 function dashboardSessionValid(request) {
   const cookie = request.headers.cookie || "";
   const token = cookie.match(/gemini_dashboard=([^;]+)/)?.[1];
-  return Boolean(token && sessions.has(token));
+  const expiresAt = token ? sessions.get(token) : 0;
+  if (!expiresAt) return false;
+  if (expiresAt <= Date.now()) { sessions.delete(token); return false; }
+  return true;
+}
+
+function clientAddress(request) {
+  return request.socket.remoteAddress || "unknown";
+}
+
+function rateLimited(address) {
+  const now = Date.now();
+  const recent = (loginAttempts.get(address) || []).filter((time) => time > now - 15 * 60 * 1000);
+  loginAttempts.set(address, recent);
+  return recent.length >= 10;
+}
+
+function recordLoginFailure(address) {
+  const recent = loginAttempts.get(address) || [];
+  recent.push(Date.now());
+  loginAttempts.set(address, recent);
 }
 
 function hasAdmin() {
@@ -214,12 +248,21 @@ function forwardToGemini(model, body, key) {
       },
     }, (response) => {
       const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve({
+      let bytes = 0;
+      let tooLarge = false;
+      response.on("data", (chunk) => {
+        bytes += chunk.length;
+        if (bytes <= MAX_RESPONSE_BYTES) chunks.push(chunk);
+        else tooLarge = true;
+      });
+      response.on("end", () => {
+        if (tooLarge) return reject(Object.assign(new Error("Gemini response is too large"), { status: 502 }));
+        resolve({
         status: response.statusCode || 502,
         headers: response.headers,
         body: Buffer.concat(chunks),
-      }));
+        });
+      });
     });
     request.on("timeout", () => request.destroy(new Error("Gemini request timed out")));
     request.on("error", reject);
@@ -301,10 +344,10 @@ async function handleGemini(request, response, model) {
   return json(response, 502, { error: "All Gemini API keys failed" });
 }
 
-const fs = require("node:fs");
 const dashboard = fs.readFileSync("dashboard.html", "utf8");
 
-const server = http.createServer(async (request, response) => {
+async function handleRequest(request, response) {
+  securityHeaders(response);
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (url.pathname === "/" && request.method === "GET") {
@@ -317,6 +360,7 @@ const server = http.createServer(async (request, response) => {
   }
   if (url.pathname === "/api/setup" && request.method === "POST") {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
+    if (rateLimited(clientAddress(request))) return json(response, 429, { error: "Too many setup attempts" });
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(String(body.username || ""))) return json(response, 400, { error: "Username must be 3-64 letters, numbers, _, ., or -" });
     if (String(body.password || "").length < 8) return json(response, 400, { error: "Password must be at least 8 characters" });
@@ -326,12 +370,16 @@ const server = http.createServer(async (request, response) => {
     return json(response, 201, { ok: true, clientApiKey });
   }
   if (url.pathname === "/login" && request.method === "POST") {
+    const address = clientAddress(request);
+    if (rateLimited(address)) return json(response, 429, { error: "Too many login attempts; try again later" });
     let raw; try { raw = (await readBody(request)).toString(); } catch { return json(response, 400, { error: "Invalid request" }); }
     const body = Object.fromEntries(new URLSearchParams(raw));
     const user = db.prepare("SELECT * FROM admin_users WHERE username = ?").get(body.username || db.prepare("SELECT username FROM admin_users ORDER BY id LIMIT 1").get().username);
-    if (!user || !passwordValid(String(body.password || ""), user)) return json(response, 401, { error: "Invalid username or password" });
-    const token = crypto.randomBytes(24).toString("hex"); sessions.add(token);
-    response.writeHead(302, { Location: "/", "Set-Cookie": `gemini_dashboard=${token}; HttpOnly; SameSite=Strict` }); return response.end();
+    if (!user || !passwordValid(String(body.password || ""), user)) { recordLoginFailure(address); return json(response, 401, { error: "Invalid username or password" }); }
+    loginAttempts.delete(address);
+    const token = crypto.randomBytes(32).toString("hex"); sessions.set(token, Date.now() + SESSION_TTL_MS);
+    const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
+    response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": `gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}` }); return response.end();
   }
   if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) return json(response, 401, { error: "Dashboard login required" });
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
@@ -379,6 +427,14 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "POST") { const model = modelNameFromPath(url.pathname); if (model) return handleGemini(request, response, model); }
   return json(response, 404, { error: "Not found" });
+}
+
+const server = http.createServer((request, response) => {
+  handleRequest(request, response).catch((error) => {
+    console.error(`[HTTP] ${error.stack || error.message}`);
+    if (!response.headersSent) json(response, error.status || 500, { error: "Internal server error" });
+    else response.destroy();
+  });
 });
 
 server.listen(PORT, "0.0.0.0", () => console.log(`Gemini proxy listening on port ${PORT}`));

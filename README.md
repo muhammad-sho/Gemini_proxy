@@ -39,3 +39,12 @@ Daily usage follows Gemini's documented midnight Pacific Time reset. Transient
 overload/server errors retry across keys and cool down that model/key for 30
 seconds. Daily quota errors cool down that model/key until the next Pacific
 midnight.
+
+## Production security
+
+The repository contains no runtime credentials. Gemini keys are entered after
+first-run setup and stored in the private SQLite volume, not in the image or
+source tree. Protect that volume and back it up securely. Put the service behind
+an HTTPS reverse proxy, restrict dashboard access with firewall rules or a VPN,
+and expose only ports 80/443 publicly. Do not expose the plain HTTP port 8080
+to the public internet unless it is only a temporary, trusted-network test.
