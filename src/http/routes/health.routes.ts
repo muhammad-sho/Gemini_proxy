@@ -22,7 +22,7 @@ export function healthRoutes(deps: AppDeps): FastifyPluginAsync {
       checks.schema = version > 0;
 
       if (deps.config.nodeEnv === "production") {
-        checks.encryption = Boolean(process.env.APP_ENCRYPTION_KEY);
+        checks.encryption = Boolean(deps.config.encryptionKey);
         if (!checks.encryption) ready = false;
       }
 

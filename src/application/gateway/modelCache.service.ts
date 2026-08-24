@@ -3,6 +3,7 @@ import type { ModelCacheRepository } from "../../infrastructure/db/repositories/
 import { GeminiAdapter } from "../../infrastructure/providers/gemini.adapter.js";
 import { OpenAICompatibleAdapter } from "../../infrastructure/providers/openai-compatible.adapter.js";
 import type { Logger } from "../../infrastructure/logging/logger.js";
+import { getConfig } from "../../config/env.js";
 
 export class ModelCacheService {
   constructor(
@@ -12,6 +13,21 @@ export class ModelCacheService {
     private gemini: GeminiAdapter,
     private openai: OpenAICompatibleAdapter
   ) {}
+
+  /**
+   * Fire-and-forget refresh when any credential's cache entry is older than
+   * the configured TTL (or missing entirely). Never throws.
+   */
+  maybeRefresh(): void {
+    try {
+      const ttlHours = getConfig().modelsCacheTtlHours;
+      const stale = this.credentialRepo.findAll().some(c => !this.cacheRepo.isFresh(c.id, ttlHours));
+      if (!stale) return;
+      void this.refresh().catch(() => { /* per-credential errors already logged */ });
+    } catch (err) {
+      this.logger.warn({ err }, "model cache staleness check failed");
+    }
+  }
 
   async refresh(providerId?: string): Promise<{ refreshed: number; errors: string[] }> {
     const credentials = this.credentialRepo.findAllWithKeys();

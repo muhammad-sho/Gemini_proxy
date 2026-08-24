@@ -65,14 +65,6 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     };
   }
 
-  translatePath(incomingPath: string): string | null {
-    if (/\/models\/[^:]+:generateContent$/.test(incomingPath)) return "/v1/chat/completions";
-    if (incomingPath === "/v1beta/models" || incomingPath.startsWith("/v1beta/models?")) {
-      return "/v1/models";
-    }
-    return null;
-  }
-
   transformRequest(request: GenerateRequest): unknown {
     const messages: Array<{ role: string; content: string }> = [];
 

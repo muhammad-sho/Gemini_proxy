@@ -30,7 +30,6 @@ export class ProviderCredentialRepository {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   private stmtDelete = this.db.prepare("DELETE FROM provider_credentials WHERE id = ?");
-  private stmtRevoke = this.db.prepare("UPDATE provider_credentials SET revoked_at = ? WHERE id = ?");
 
   constructor() {
     const config = getConfig();
@@ -126,18 +125,5 @@ export class ProviderCredentialRepository {
   delete(id: string): boolean {
     const result = this.stmtDelete.run(id);
     return result.changes > 0;
-  }
-
-  revoke(id: string): boolean {
-    const result = this.stmtRevoke.run(Date.now(), id);
-    return result.changes > 0;
-  }
-
-  getDecryptedKey(credential: ProviderCredential): string {
-    return this.decryptKey(credential.api_key_encrypted);
-  }
-
-  hasEncryptionKey(): boolean {
-    return this.encryptionKey !== null;
   }
 }

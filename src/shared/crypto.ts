@@ -7,7 +7,7 @@ const SALT_LENGTH = 16;
 const KEY_LENGTH = 32;
 const TAG_LENGTH = 16;
 
-export function deriveKey(password: string, salt: Buffer): Buffer {
+function deriveKey(password: string, salt: Buffer): Buffer {
   return scryptSync(password, salt, KEY_LENGTH);
 }
 

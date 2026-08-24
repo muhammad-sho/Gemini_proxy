@@ -16,6 +16,8 @@ export class AdminSessionService {
       return null;
     }
 
+    // Housekeeping: drop long-expired sessions so the table doesn't grow forever.
+    this.sessionRepo.deleteExpired();
     const session = this.sessionRepo.create(user.id);
     return {
       sessionId: session.id,

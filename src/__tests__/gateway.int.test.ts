@@ -56,7 +56,13 @@ describe("gateway routing integration", () => {
   let app: any;
   let adminCookie: string;
   let clientKey: string;
-  let csrf: string; // eslint-disable-line @typescript-eslint/no-unused-vars -- kept for future admin mutations
+  let csrf: string;
+
+  /** Admin request headers incl. CSRF echo, mirroring the dashboard client. */
+  const adminHeaders = (): Record<string, string> => ({
+    cookie: adminCookie,
+    "x-csrf-token": csrf
+  });
   const cleanupDirs: string[] = [];
 
   beforeAll(async () => {
@@ -89,7 +95,7 @@ describe("gateway routing integration", () => {
     const credBad = await app.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
-      headers: { cookie: adminCookie },
+      headers: adminHeaders(),
       payload: { label: "bad", provider: "gemini", apiKey: "BAD_KEY", baseUrl: `http://127.0.0.1:${port}` }
     });
     expect(credBad.statusCode).toBe(201);
@@ -97,7 +103,7 @@ describe("gateway routing integration", () => {
     const credGood = await app.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
-      headers: { cookie: adminCookie },
+      headers: adminHeaders(),
       payload: { label: "good", provider: "gemini", apiKey: "GOOD_KEY", baseUrl: `http://127.0.0.1:${port}` }
     });
     expect(credGood.statusCode).toBe(201);
@@ -105,7 +111,7 @@ describe("gateway routing integration", () => {
     const ck = await app.inject({
       method: "POST",
       url: "/api/admin/v1/client-keys",
-      headers: { cookie: adminCookie },
+      headers: adminHeaders(),
       payload: { label: "tester" }
     });
     clientKey = ck.json().clientApiKey;
@@ -177,7 +183,7 @@ describe("gateway routing integration", () => {
     const credQuota = await app.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
-      headers: { cookie: adminCookie },
+      headers: adminHeaders(),
       payload: { label: "quota", provider: "gemini", apiKey: "QUOTA_KEY", baseUrl: `http://127.0.0.1:${port}` }
     });
     expect(credQuota.statusCode).toBe(201);
@@ -204,6 +210,16 @@ describe("gateway routing integration", () => {
 
   it("rejects unauthenticated admin calls", async () => {
     const res = await app.inject({ method: "GET", url: "/api/admin/v1/state" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects admin mutations without the CSRF header", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/v1/client-keys",
+      headers: { cookie: adminCookie }, // session cookie but no x-csrf-token
+      payload: { label: "csrf-less" }
+    });
     expect(res.statusCode).toBe(401);
   });
 });

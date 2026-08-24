@@ -38,7 +38,6 @@ export class RequestLogRepository {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   private stmtGetById = this.db.prepare("SELECT * FROM request_logs WHERE id = ?");
-  private stmtGetByTrace = this.db.prepare("SELECT * FROM request_logs WHERE trace_id = ? ORDER BY attempt_number");
   private stmtGetFiltered = this.db.prepare(`
     SELECT * FROM request_logs
     WHERE (? IS NULL OR model_id = ?)
@@ -85,10 +84,6 @@ export class RequestLogRepository {
 
   findById(id: number): RequestLog | undefined {
     return this.stmtGetById.get(id) as RequestLog | undefined;
-  }
-
-  findByTrace(traceId: string): RequestLog[] {
-    return this.stmtGetByTrace.all(traceId) as RequestLog[];
   }
 
   findFiltered(filters: RequestLogFilters): { logs: RequestLog[]; total: number } {

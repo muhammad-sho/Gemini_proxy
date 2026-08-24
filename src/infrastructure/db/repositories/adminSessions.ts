@@ -14,22 +14,15 @@ export class AdminSessionRepository {
   private db = getDb();
 
   private stmtGetById = this.db.prepare("SELECT * FROM admin_sessions WHERE id = ?");
-  private stmtGetByUserId = this.db.prepare("SELECT * FROM admin_sessions WHERE user_id = ? AND expires_at > ?");
   private stmtInsert = this.db.prepare(`
     INSERT INTO admin_sessions (id, user_id, csrf_token, expires_at)
     VALUES (?, ?, ?, ?)
   `);
   private stmtDelete = this.db.prepare("DELETE FROM admin_sessions WHERE id = ?");
   private stmtDeleteExpired = this.db.prepare("DELETE FROM admin_sessions WHERE expires_at <= ?");
-  private stmtDeleteByUser = this.db.prepare("DELETE FROM admin_sessions WHERE user_id = ?");
 
   findById(sessionId: string): AdminSession | undefined {
     return this.stmtGetById.get(sessionId) as AdminSession | undefined;
-  }
-
-  findValidByUserId(userId: number): AdminSession | undefined {
-    const now = Date.now();
-    return this.stmtGetByUserId.get(userId, now) as AdminSession | undefined;
   }
 
   create(userId: number, ttlMs: number = 24 * 60 * 60 * 1000): AdminSession {
@@ -51,11 +44,6 @@ export class AdminSessionRepository {
   delete(sessionId: string): boolean {
     const result = this.stmtDelete.run(sessionId);
     return result.changes > 0;
-  }
-
-  deleteByUser(userId: number): number {
-    const result = this.stmtDeleteByUser.run(userId);
-    return result.changes;
   }
 
   deleteExpired(): number {

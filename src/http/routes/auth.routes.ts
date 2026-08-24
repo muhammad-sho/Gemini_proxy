@@ -63,9 +63,14 @@ function recordAudit(
   ip: string
 ): void {
   try {
-    deps.db.prepare(
-      "INSERT INTO audit_logs (admin_user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(userId, action, entityType, entityId, null, ip);
+    deps.auditRepo.record({
+      admin_user_id: userId,
+      action,
+      entity_type: entityType,
+      entity_id: entityId,
+      details: null,
+      ip_address: ip
+    });
   } catch {
     // audit failures must not break auth flow
   }
@@ -76,8 +81,14 @@ export function requireAdmin(deps: AppDeps): (req: FastifyRequest) => { sessionI
     const sessionId = req.cookies?.[SESSION_COOKIE];
     if (!sessionId) return null;
     const csrfHeader = req.headers["x-csrf-token"] as string | undefined;
-    const data = deps.adminSessionService.validateSession(sessionId, csrfHeader);
+    // Mutating requests must prove same-origin by echoing the CSRF cookie.
+    const csrfRequired = req.method !== "GET" && req.method !== "HEAD";
+    const data = deps.adminSessionService.validateSession(
+      sessionId,
+      csrfRequired ? csrfHeader : undefined
+    );
     if (!data || !data.session) return null;
+    if (csrfRequired && !csrfHeader) return null;
     return { sessionId, csrfToken: csrfHeader ?? data.session.csrf_token };
   };
 }

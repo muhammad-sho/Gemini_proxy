@@ -1,4 +1,4 @@
-import type { ProviderAdapter, UpstreamCredential } from "../../domain/providers/adapter.js";
+import type { ProviderAdapter, UpstreamCredential, GenerateRequest } from "../../domain/providers/adapter.js";
 import type { GeminiAdapter } from "../../infrastructure/providers/gemini.adapter.js";
 import type { OpenAICompatibleAdapter } from "../../infrastructure/providers/openai-compatible.adapter.js";
 import { cooldownFor, type CooldownPolicy } from "../../domain/routing/cooldown.js";
@@ -137,13 +137,16 @@ export class RoutingService {
 
       try {
         const url = adapter.buildUrl(upstream, input.path);
+        // Query params are Gemini-flavored (e.g. alt=sse); forward them only
+        // to gemini-native upstreams.
+        const qs = adapter.providerType === "gemini" ? input.query.toString() : "";
+        const urlWithQuery = qs ? `${url}?${qs}` : url;
         const result = await this.callUpstream(
           adapter,
           upstream,
-          url,
+          urlWithQuery,
           input,
-          controller.signal,
-          timeoutMs
+          controller.signal
         );
 
         if (result.status >= 200 && result.status < 300) {
@@ -169,7 +172,7 @@ export class RoutingService {
           this.stateRepo.updateState(
             input.modelId,
             credential.id,
-            policy.kind === "daily_quota" ? "cooling" : policy.kind === "invalid_key" ? "cooling" : "cooling",
+            "cooling",
             Date.now() + policy.durationMs,
             policy.reason
           );
@@ -227,8 +230,7 @@ export class RoutingService {
     credential: UpstreamCredential,
     url: string,
     input: RouteRequestInput,
-    signal: AbortSignal,
-    _timeoutMs: number
+    signal: AbortSignal
   ): Promise<Omit<UpstreamResult, "attempts" | "outcome" | "classification">> {
     const headers = adapter.buildHeaders(credential);
     const allowlist = ["content-type", "accept", "user-agent"];
@@ -237,10 +239,25 @@ export class RoutingService {
       if (allowlist.includes(k.toLowerCase())) forwardedHeaders[k] = v;
     }
 
+    // Gemini-native upstreams receive the body verbatim; other providers get
+    // the Gemini-shaped payload translated by their adapter first.
+    let body = input.body;
+    if (body && body.length > 0 && adapter.providerType !== "gemini") {
+      try {
+        const geminiRequest = JSON.parse(body.toString("utf8")) as GenerateRequest & { model?: string };
+        if (!geminiRequest.model) geminiRequest.model = input.modelId;
+        const transformed = adapter.transformRequest(geminiRequest);
+        body = Buffer.from(JSON.stringify(transformed));
+        delete forwardedHeaders["accept"];
+      } catch (err) {
+        this.logger.warn({ err }, "request translation failed; forwarding original body");
+      }
+    }
+
     const response = await fetch(url, {
       method: input.method,
       headers: { ...headers, ...forwardedHeaders },
-      body: input.body && input.body.length > 0 ? input.body : undefined,
+      body: body && body.length > 0 ? body : undefined,
       signal
     });
 
@@ -252,15 +269,34 @@ export class RoutingService {
 
     const config = getConfig();
     const arrayBuffer = await response.arrayBuffer();
-    let body = Buffer.from(arrayBuffer);
-    if (body.length > config.maxResponseBytes) {
-      body = body.subarray(0, config.maxResponseBytes);
+    let responseBody = Buffer.from(arrayBuffer);
+    if (responseBody.length > config.maxResponseBytes) {
+      responseBody = responseBody.subarray(0, config.maxResponseBytes);
+    }
+
+    // Translate successful non-Gemini responses back into Gemini shape so
+    // clients always speak one protocol regardless of upstream provider.
+    const contentType = responseHeaders["content-type"] ?? "";
+    if (
+      response.ok &&
+      adapter.providerType !== "gemini" &&
+      contentType.includes("application/json") &&
+      responseBody.length > 0
+    ) {
+      try {
+        const parsed = JSON.parse(responseBody.toString("utf8"));
+        const translated = adapter.transformResponse(parsed);
+        responseBody = Buffer.from(JSON.stringify(translated));
+        responseHeaders["content-type"] = "application/json";
+      } catch (err) {
+        this.logger.warn({ err }, "response translation failed; returning original body");
+      }
     }
 
     return {
       status: response.status,
       headers: responseHeaders,
-      body,
+      body: responseBody,
       credentialId: credential.id
     };
   }

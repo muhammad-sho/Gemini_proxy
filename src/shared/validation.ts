@@ -63,15 +63,5 @@ export const providerCredentialCreateSchema = z.object({
   allowedGroups: z.array(z.string()).optional()
 });
 
-export const loginSchema = z.object({
-  token: z.string().min(1)
-});
-
-export const modelRefreshSchema = z.object({
-  providerId: z.string().uuid().optional()
-});
-
 export type ClientKeyCreate = z.infer<typeof clientKeyCreateSchema>;
 export type ProviderCredentialCreate = z.infer<typeof providerCredentialCreateSchema>;
-export type LoginRequest = z.infer<typeof loginSchema>;
-export type ModelRefreshRequest = z.infer<typeof modelRefreshSchema>;

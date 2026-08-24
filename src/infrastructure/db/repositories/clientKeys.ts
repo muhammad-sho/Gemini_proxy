@@ -28,7 +28,6 @@ export class ClientKeyRepository {
     VALUES (?, ?, ?, ?, ?)
   `);
   private stmtDelete = this.db.prepare("DELETE FROM client_keys WHERE id = ?");
-  private stmtRevoke = this.db.prepare("UPDATE client_keys SET revoked_at = ? WHERE id = ?");
 
   private parseRow(row: any): ClientKey {
     return {
@@ -80,21 +79,5 @@ export class ClientKeyRepository {
   delete(id: string): boolean {
     const result = this.stmtDelete.run(id);
     return result.changes > 0;
-  }
-
-  revoke(id: string): boolean {
-    const result = this.stmtRevoke.run(nowSec(), id);
-    return result.changes > 0;
-  }
-
-  validateModelAccess(key: ClientKey, model: string): boolean {
-    if (key.allowed_models.length === 0 && key.allowed_groups.length === 0) {
-      return true; // No restrictions
-    }
-    if (key.allowed_models.includes(model)) {
-      return true;
-    }
-    // Group-based access would be checked at a higher level
-    return false;
   }
 }

@@ -53,7 +53,6 @@ export interface ProviderAdapter {
   listModels(credential: UpstreamCredential): Promise<ProviderModel[]>;
   buildUrl(credential: UpstreamCredential, path: string): string;
   buildHeaders(credential: UpstreamCredential): Record<string, string>;
-  translatePath(incomingPath: string): string | null;
   transformRequest(request: GenerateRequest): unknown;
   transformResponse(response: unknown): GenerateResponse;
   classifyError(body: unknown, statusCode: number): ErrorClassification;

@@ -16,6 +16,7 @@ import { UsageEventRepository } from "./../infrastructure/db/repositories/usageE
 import { RequestLogRepository } from "./../infrastructure/db/repositories/requestLogs.js";
 import { ModelCacheRepository } from "./../infrastructure/db/repositories/modelCache.js";
 import { ModelGroupRepository } from "./../infrastructure/db/repositories/modelGroups.js";
+import { AuditLogRepository } from "./../infrastructure/db/repositories/auditLogs.js";
 
 import { AdminSessionService } from "./../domain/auth/adminSessionService.js";
 
@@ -44,6 +45,7 @@ export interface AppDeps {
   logRepo: RequestLogRepository;
   cacheRepo: ModelCacheRepository;
   groupRepo: ModelGroupRepository;
+  auditRepo: AuditLogRepository;
 }
 
 export async function buildServer(config: EnvConfig, logger: Logger, db: Database) {
@@ -82,6 +84,7 @@ export async function buildServer(config: EnvConfig, logger: Logger, db: Databas
   const logRepo = new RequestLogRepository();
   const cacheRepo = new ModelCacheRepository();
   const groupRepo = new ModelGroupRepository();
+  const auditRepo = new AuditLogRepository();
 
   const adminSessionService = new AdminSessionService();
 
@@ -96,7 +99,7 @@ export async function buildServer(config: EnvConfig, logger: Logger, db: Databas
   const deps: AppDeps = {
     config, logger, db,
     routingService, modelCacheService, adminSessionService,
-    clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, groupRepo
+    clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, groupRepo, auditRepo
   };
 
   // ---- Routes ----

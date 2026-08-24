@@ -54,20 +54,22 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
       }
 
       const cached = deps.cacheRepo.getAll();
+      // Refresh silently when the cache is older than the configured TTL.
+      deps.modelCacheService.maybeRefresh();
+
       const allowed = cached
         .map(row => {
           try { return JSON.parse(row.raw_data); } catch { return null; }
         })
         .filter(Boolean);
 
-      // Apply client-key model allowlist
+      // Apply client-key model allowlist (groups expanded once, up front)
+      const groupModels = deps.groupRepo.expandModels(clientKey.allowed_groups);
       const filtered = (clientKey.allowed_models.length === 0 && clientKey.allowed_groups.length === 0)
         ? allowed
-        : allowed.filter((m: any) => {
-            if (clientKey.allowed_models.includes(m.id)) return true;
-            const groups = deps.groupRepo.expandModels(clientKey.allowed_groups);
-            return groups.includes(m.id);
-          });
+        : allowed.filter((m: any) =>
+            clientKey.allowed_models.includes(m.id) || groupModels.includes(m.id)
+          );
 
       return reply.send({ models: filtered.map((m: any) => ({ name: `models/${m.id}`, ...m })) });
     });

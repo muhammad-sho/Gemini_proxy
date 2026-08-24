@@ -81,14 +81,6 @@ export class GeminiAdapter implements ProviderAdapter {
     };
   }
 
-  translatePath(incomingPath: string): string | null {
-    // Incoming paths are already /v1beta/... Gemini-style paths; pass through.
-    if (incomingPath.startsWith("/v1beta/") || incomingPath.startsWith("/v1/")) {
-      return incomingPath;
-    }
-    return null;
-  }
-
   transformRequest(request: GenerateRequest): unknown {
     return request;
   }
