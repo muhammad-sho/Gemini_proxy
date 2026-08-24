@@ -16,10 +16,11 @@ RUN npm run build && npm run web:build
 # Prune to production dependencies only (dist/ and dist-web/ are static outputs)
 RUN npm prune --omit=dev --legacy-peer-deps
 
-# ---- Runtime stage: non-root, minimal ----
+# ---- Runtime stage: minimal, drops to non-root after fixing data volume ----
 FROM node:22-alpine AS runtime
 WORKDIR /app
 RUN addgroup -S app && adduser -S app -G app \
+    && apk add --no-cache su-exec \
     && mkdir -p /data && chown app:app /data
 
 ENV NODE_ENV=production \
@@ -30,11 +31,14 @@ COPY --from=build --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/dist ./dist
 COPY --from=build --chown=app:app /app/dist-web ./dist-web
 COPY --from=build --chown=app:app /app/package.json ./package.json
+COPY --chmod=755 entrypoint.sh ./entrypoint.sh
 
-USER app
 EXPOSE 18765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- "http://127.0.0.1:${PORT}/health/live" >/dev/null 2>&1 || exit 1
 
+# Starts as root only to fix /data ownership (bind mounts), then immediately
+# execs the server as the unprivileged `app` user — see entrypoint.sh.
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "dist/main.js"]

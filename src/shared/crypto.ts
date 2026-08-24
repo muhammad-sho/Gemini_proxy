@@ -47,10 +47,6 @@ export function hashApiKey(key: string): string {
   return createHash("sha256").update(key).digest("hex");
 }
 
-export function generateApiKey(): string {
-  return `gpk_${randomBytes(24).toString("base64url")}`;
-}
-
 export function generateClientApiKey(): string {
   return `gck_${randomBytes(24).toString("base64url")}`;
 }

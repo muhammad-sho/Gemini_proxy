@@ -205,7 +205,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **Model not permitted** — the client key's allowlist doesn't include this model.
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
 * **Readiness failing on encryption** — set `APP_ENCRYPTION_KEY`.
-* **Database read-only** — ensure the data directory is writable by the container user (Compose mounts handle SELinux via `:Z`).
+* **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 
 ---
 

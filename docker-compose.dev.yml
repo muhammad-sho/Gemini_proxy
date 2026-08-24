@@ -1,4 +1,0 @@
-services:
-  gemini-proxy:
-    build: .
-    image: gemini-proxy:dev
