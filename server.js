@@ -676,7 +676,7 @@ async function refreshModels(request) {
 async function discoverProviderModels(provider, apiKey, baseUrl) {
   const adapter = adapters[provider] || adapters.gemini;
   const upstreamUrl = new URL(baseUrl || (provider === "openai_compatible" ? "https://api.openai.com/v1" : "https://generativelanguage.googleapis.com"));
-  upstreamUrl.pathname = "/v1beta/models";
+  upstreamUrl.pathname = adapter.basePath + adapter.modelsPath;
   upstreamUrl.searchParams.set("pageSize", "1000");
 
   const reqOpts = adapter.buildRequest(Buffer.alloc(0), apiKey, {});
@@ -762,6 +762,16 @@ async function discoverProviderModels(provider, apiKey, baseUrl) {
 
 function syntheticModelsRequest() {
   return { url: "/v1beta/models?pageSize=1000", method: "GET", headers: {} };
+}
+
+async function checkHealth() {
+  try {
+    if (!getEncryptionKey()) return { ready: false, reason: "encryption key not configured" };
+    db.prepare("SELECT 1").get();
+    return { ready: true };
+  } catch (e) {
+    return { ready: false, reason: e.message };
+  }
 }
 
 async function handleModelsList(request, response) {
@@ -1046,7 +1056,23 @@ async function forwardToProvider(request, body, cred, opts = {}) {
   return new Promise((resolve, reject) => {
     const upstreamUrl = new URL(cred.base_url || (provider === "openai_compatible" ? "https://api.openai.com/v1" : "https://generativelanguage.googleapis.com"));
     const incomingUrl = new URL(request.url, "http://localhost");
-    upstreamUrl.pathname = incomingUrl.pathname;
+    
+    // Translate path using adapter
+    let upstreamPath = incomingUrl.pathname;
+    if (upstreamPath.startsWith("/v1beta/models/")) {
+      const modelMatch = upstreamPath.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
+      if (modelMatch) {
+        const model = modelMatch[1];
+        upstreamPath = adapter.basePath + adapter.generatePath(model);
+      } else if (upstreamPath === "/v1beta/models" || upstreamPath.startsWith("/v1beta/models?")) {
+        upstreamPath = adapter.basePath + adapter.modelsPath + upstreamPath.slice("/v1beta/models".length);
+      }
+    } else if (upstreamPath.startsWith("/v1/")) {
+      // Already OpenAI-compatible path
+      upstreamPath = upstreamPath;
+    }
+    
+    upstreamUrl.pathname = upstreamPath;
     upstreamUrl.search = incomingUrl.search;
 
     const reqOpts = adapter.buildRequest(body, apiKey, opts);
@@ -1054,7 +1080,7 @@ async function forwardToProvider(request, body, cred, opts = {}) {
     for (const name of ["content-type", "accept", "user-agent", "x-goog-api-client", "x-goog-user-project"]) {
       if (request.headers[name]) headers[name] = request.headers[name];
     }
-    headers["content-length"] = body.length;
+    headers["content-length"] = Buffer.byteLength(body);
 
     let settled = false;
     const finish = (fn, value) => { if (!settled) { settled = true; fn(value); } };
@@ -1106,6 +1132,11 @@ async function handleRequest(request, response) {
     json(response, 413, { error: "Request body is too large" });
     request.resume();
     return;
+  }
+  if (url.pathname === "/health/live") return json(response, 200, { status: "alive" });
+  if (url.pathname === "/health/ready") {
+    const health = await checkHealth();
+    return json(response, health.ready ? 200 : 503, health);
   }
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
