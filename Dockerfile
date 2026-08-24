@@ -3,6 +3,8 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+# better-sqlite3 v13 ships no prebuilt binaries; node-gyp needs a toolchain.
+RUN apk add --no-cache python3 make g++
 # Lockfile is generated with --legacy-peer-deps (peer ranges of newer Vite/React
 # tooling overlap); npm must use the same mode or ci() rejects the tree.
 RUN npm ci --legacy-peer-deps --no-audit --no-fund
