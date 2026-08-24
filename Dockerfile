@@ -3,7 +3,9 @@ FROM node:22-alpine AS build
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci --no-audit --no-fund
+# Lockfile is generated with --legacy-peer-deps (peer ranges of newer Vite/React
+# tooling overlap); npm must use the same mode or ci() rejects the tree.
+RUN npm ci --legacy-peer-deps --no-audit --no-fund
 
 COPY tsconfig.json eslint.config.mjs ./
 COPY src ./src
@@ -12,7 +14,7 @@ COPY web ./web
 RUN npm run build && npm run web:build
 
 # Prune to production dependencies only (dist/ and dist-web/ are static outputs)
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --legacy-peer-deps
 
 # ---- Runtime stage: non-root, minimal ----
 FROM node:22-alpine AS runtime
