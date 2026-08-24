@@ -18,16 +18,20 @@ export function authRoutes(deps: AppDeps): FastifyPluginAsync {
         return reply.status(401).send({ error: { code: 401, message: "Invalid token", requestId: req.id } });
       }
 
+      // Secure flag must follow the actual connection protocol, not NODE_ENV:
+      // over plain-HTTP LAN deployments a Secure cookie is dropped by the browser.
+      const secure = req.protocol === "https";
+
       reply.setCookie(SESSION_COOKIE, result.sessionId, {
         httpOnly: true,
         sameSite: "strict",
-        secure: deps.config.nodeEnv === "production",
+        secure,
         path: "/"
       });
       reply.setCookie(CSRF_COOKIE, result.csrfToken, {
         httpOnly: false,
         sameSite: "strict",
-        secure: deps.config.nodeEnv === "production",
+        secure,
         path: "/"
       });
 
