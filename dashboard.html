@@ -359,7 +359,7 @@
     .empty-cell { color: var(--text-muted); font-style: italic; }
 
     /* Usage heatmap */
-    .usage-table { border-collapse: collapse; width: 100%; }
+    .usage-table { border-collapse: collapse; width: auto; }
     .usage-table th, .usage-table td { border: 1px solid var(--border); }
     .usage-table thead th {
       font-size: 10px;
@@ -381,7 +381,7 @@
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       cursor: help;
-      min-width: 44px;
+      width: 46px;
     }
     .usage-table tbody th {
       font-size: 12px;
@@ -396,24 +396,21 @@
       text-overflow: ellipsis;
     }
     .usage-table td.num {
-      min-width: 52px;
-      height: 30px;
-      padding: 0 8px;
+      width: 46px;
+      height: 46px;
+      padding: 0;
       text-align: center;
       vertical-align: middle;
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       font-weight: 800;
-      border-radius: 0;
       cursor: default;
-      border-bottom: 1px solid var(--border);
     }
     .usage-table td.cell-ok   { background: var(--emerald); color: #ffffff; }
     .usage-table td.cell-warn { background: var(--amber);   color: #26160a; }
     .usage-table td.cell-hot  { background: var(--rose);    color: #ffffff; }
     .usage-table td.cell-none { background: var(--surface-alt); color: var(--text-dim); opacity: .6; }
-    .usage-table tbody tr:hover td { filter: brightness(1.09); }
-    .usage-table td.xfocus { filter: brightness(1.09); }
+    .usage-table td.xfocus { filter: brightness(1.06); }
     .usage-table td.num:hover { outline: 2px solid var(--border-strong); outline-offset: -2px; position: relative; }
     #keyTip {
       display: none;
