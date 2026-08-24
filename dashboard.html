@@ -12,6 +12,7 @@
       --surface: #ffffff;
       --surface-alt: #f1f5f9;
       --border: #e2e8f0;
+      --cell-line: #64748b;
       --border-strong: #0f172a;
       --text: #0f172a;
       --text-dim: #475569;
@@ -35,6 +36,7 @@
       --surface: #111827;
       --surface-alt: #1a2234;
       --border: #1f293d;
+      --cell-line: #46557a;
       --border-strong: #ffffff;
       --text: #f9fafb;
       --text-dim: #94a3b8;
@@ -315,7 +317,6 @@
       vertical-align: middle;
     }
     .data-table tr:last-child td { border-bottom: none; }
-    .data-table tr:hover td { background: transparent; }
     .data-table tr:hover td:first-child { box-shadow: inset 3px 0 0 0 var(--border-strong); }
 
     /* Badges */
@@ -360,7 +361,7 @@
 
     /* Usage heatmap */
     .usage-table { border-collapse: collapse; width: auto; }
-    .usage-table th, .usage-table td { border: 1px solid var(--border); }
+    .usage-table th, .usage-table td { border: 1px solid var(--cell-line); }
     .usage-table thead th {
       font-size: 10px;
       font-weight: 800;
@@ -374,14 +375,14 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      border-bottom: 2px solid var(--border);
+      border-bottom: 2px solid var(--cell-line);
     }
     .usage-table thead th:first-child { text-align: left; padding-left: 8px; }
     .usage-table thead th.keynum {
       font-family: 'JetBrains Mono', monospace;
       font-size: 12px;
       cursor: help;
-      width: 46px;
+      white-space: nowrap;
     }
     .usage-table tbody th {
       font-size: 12px;
@@ -396,14 +397,14 @@
       text-overflow: ellipsis;
     }
     .usage-table td.num {
-      width: 46px;
-      height: 46px;
-      padding: 0;
+      min-width: 34px;
+      padding: 5px 10px;
       text-align: center;
       vertical-align: middle;
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       font-weight: 800;
+      white-space: nowrap;
       cursor: default;
     }
     .usage-table td.cell-ok   { background: var(--emerald); color: #ffffff; }
