@@ -447,43 +447,75 @@
 
     .log-row { cursor: pointer; }
     .log-row:hover td { background: var(--surface-alt); }
-    .log-detail-box {
-      margin-top: 8px;
-      border: 1px solid var(--border, var(--surface-alt));
-      border-radius: 10px;
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 15, 30, .55);
+      backdrop-filter: blur(2px);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 760px;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 18px 50px rgba(0,0,0,.3);
       overflow: hidden;
     }
-    .log-detail-head {
+    .modal-head {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 10px;
       flex-wrap: wrap;
-      gap: 8px;
-      padding: 10px 14px;
-      background: var(--surface-alt);
-      font-size: 13px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
     }
-    .log-detail-body { padding: 0 14px 14px; }
-    .log-detail-body h3 {
-      font-size: 12px;
+    .modal-x {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+    .modal-x:hover { background: var(--surface-alt); color: var(--text); }
+    .modal-body { padding: 16px 18px 20px; overflow-y: auto; }
+    .log-summary {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 6px 14px;
+      font-size: 13px;
+      margin-bottom: 16px;
+    }
+    .log-summary dt {
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 700;
       text-transform: uppercase;
       letter-spacing: .04em;
-      color: var(--text-muted);
-      margin: 14px 0 6px;
+      padding-top: 2px;
+      white-space: nowrap;
     }
-    .log-detail-body pre {
-      background: var(--surface-alt);
-      border-radius: 8px;
-      padding: 12px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 12px;
-      line-height: 1.55;
-      overflow-x: auto;
-      max-height: 340px;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
+    .log-summary dd { margin: 0; word-break: break-word; }
 
+    .modal-body h3 {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--text-muted);
+      margin: 16px 0 8px;
+    }
     .timeline {
       border-left: 2px solid var(--border);
       margin-left: 6px;
@@ -728,7 +760,6 @@
           <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
         </span>
       </div>
-      <div id="logDetail" style="display:none"></div>
     </div>
   </div>
 
@@ -1066,7 +1097,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   }
 
   async function loadLogs(reset = true) {
-    if (reset) { logsOffset = 0; document.getElementById('logDetail').style.display = 'none'; }
+    if (reset) { logsOffset = 0; }
     const params = new URLSearchParams();
     const model = document.getElementById('logModel').value;
     const outcome = document.getElementById('logResult').value;
@@ -1133,29 +1164,54 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     }).join('')}</div>`;
   }
 
+  let currentLog = null;
+
+  function closeLogModal() {
+    document.getElementById('logModal').style.display = 'none';
+  }
+
   async function showLogDetail(id) {
     try {
       const l = await api('/api/admin/logs/' + id);
-      const box = document.getElementById('logDetail');
-      box.style.display = 'block';
-      box.innerHTML = `
-        <div class="log-detail-box">
-          <div class="log-detail-head">
-            <strong>Log #${l.id}</strong>
-            <span>${new Date(Number(l.created_at)).toLocaleString()} · ${esc(l.model)} · ${esc(l.key_label || 'no key')}${l.key_masked ? ` (${esc(l.key_masked)})` : ''} · attempt ${l.attempt}</span>
-            <span>trace <code style="font-family:'JetBrains Mono',monospace">${esc((l.trace_id || '').slice(0, 8)) || '—'}</code></span>
-            ${resultTag(l)}
-          </div>
-          <div class="log-detail-body">
-            ${timelineHtml(l.events)}
-            <h3>Request Body</h3>
-            <pre>${esc(prettyPayload(l.request_body)) || '(empty)'}</pre>
-            <h3>Response${l.response_body ? '' : ' — never reached Google'}</h3>
-            <pre>${esc(prettyPayload(l.response_body)) || '(empty)'}</pre>
-          </div>
-        </div>`;
-      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      currentLog = l;
+      document.getElementById('logModalTitle').innerHTML = `Log #${l.id} ${resultTag(l)}`;
+      const summary = (label, value) => `<dt>${label}</dt><dd>${value}</dd>`;
+      document.getElementById('logModalBody').innerHTML = `
+        <dl class="log-summary">
+          ${summary('Time', new Date(Number(l.created_at)).toLocaleString())}
+          ${summary('Model', `<strong>${esc(l.model)}</strong>`)}
+          ${summary('Gemini key', l.key_label ? `${esc(l.key_label)} <code style="font-family:'JetBrains Mono',monospace">(${esc(l.key_masked)})</code>` : '—')}
+          ${summary('Attempts', String(l.attempt || 0))}
+          ${summary('Result', `${resultTag(l)}${l.error_code ? ` · ${esc(l.error_code)}` : ''}`)}
+          ${summary('Trace', `<code style="font-family:'JetBrains Mono',monospace">${esc((l.trace_id || '').slice(0, 8)) || '—'}</code> <span style="color:var(--text-muted);font-size:11px">(grep this ID in container logs)</span>`)}
+        </dl>
+        ${timelineHtml(l.events)}`;
+      document.getElementById('logModal').style.display = 'flex';
     } catch {}
+  }
+
+  function logDebugText(l) {
+    let events = [];
+    try { events = JSON.parse(l.events || '[]'); } catch {}
+    return JSON.stringify({
+      id: l.id,
+      trace_id: l.trace_id,
+      created_at: new Date(Number(l.created_at)).toISOString(),
+      model: l.model,
+      key: l.key_label ? `${l.key_label} (${l.key_masked})` : null,
+      attempt: l.attempt,
+      status: l.status,
+      outcome: l.outcome,
+      error_code: l.error_code,
+      timeline: events,
+      request_body: prettyPayload(l.request_body) || null,
+      response_body: prettyPayload(l.response_body) || null
+    }, null, 2);
+  }
+
+  async function copyLogDetail(button) {
+    if (!currentLog) return;
+    copyText(logDebugText(currentLog), button);
   }
 
   function showPanel(name, tabEl, updateHash = true) {
@@ -1249,6 +1305,21 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   load();
   setInterval(load, 5000);
+
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeLogModal(); });
 </script>
+
+  <div id="logModal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeLogModal()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <strong id="logModalTitle">Log</strong>
+        <span style="display:flex;gap:8px;align-items:center">
+          <button type="button" class="btn-tbl" onclick="copyLogDetail(this)">Copy Debug Details</button>
+          <button type="button" class="modal-x" onclick="closeLogModal()" title="Close">&times;</button>
+        </span>
+      </div>
+      <div class="modal-body" id="logModalBody"></div>
+    </div>
+  </div>
 </body>
 </html>
