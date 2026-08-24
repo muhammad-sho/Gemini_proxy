@@ -315,7 +315,8 @@
       vertical-align: middle;
     }
     .data-table tr:last-child td { border-bottom: none; }
-    .data-table tr:hover td { background: var(--surface-alt); }
+    .data-table tr:hover td { background: transparent; }
+    .data-table tr:hover td:first-child { box-shadow: inset 3px 0 0 0 var(--border-strong); }
 
     /* Badges */
     .status-tag {
@@ -358,7 +359,8 @@
     .empty-cell { color: var(--text-muted); font-style: italic; }
 
     /* Usage heatmap */
-    .usage-table { border-collapse: separate; border-spacing: 3px; width: 100%; }
+    .usage-table { border-collapse: collapse; width: 100%; }
+    .usage-table th, .usage-table td { border: 1px solid var(--border); }
     .usage-table thead th {
       font-size: 10px;
       font-weight: 800;
@@ -366,15 +368,21 @@
       letter-spacing: .05em;
       color: var(--text-dim);
       background: transparent;
-      border: none;
-      padding: 2px 4px 3px;
+      padding: 4px 6px;
       text-align: center;
       max-width: 96px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      border-bottom: 2px solid var(--border);
     }
-    .usage-table thead th:first-child { text-align: left; padding-left: 6px; }
+    .usage-table thead th:first-child { text-align: left; padding-left: 8px; }
+    .usage-table thead th.keynum {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      cursor: help;
+      min-width: 44px;
+    }
     .usage-table tbody th {
       font-size: 12px;
       font-weight: 600;
@@ -382,30 +390,45 @@
       text-align: left;
       white-space: nowrap;
       background: transparent;
-      border: none;
-      padding: 0 12px 0 6px;
+      padding: 0 12px;
       max-width: 230px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .usage-table td.num {
       min-width: 52px;
-      height: 28px;
+      height: 30px;
       padding: 0 8px;
       text-align: center;
       vertical-align: middle;
       font-family: 'JetBrains Mono', monospace;
       font-size: 13px;
       font-weight: 800;
-      border-radius: 7px;
+      border-radius: 0;
       cursor: default;
-      border-bottom: none;
+      border-bottom: 1px solid var(--border);
     }
-    .usage-table td.num:hover { filter: brightness(1.1); }
-    .usage-table td.cell-ok   { background: var(--emerald); color: #ffffff; box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
-    .usage-table td.cell-warn { background: var(--amber);   color: #26160a; box-shadow: inset 0 -2px 0 rgba(0,0,0,.22); }
-    .usage-table td.cell-hot  { background: var(--rose);    color: #ffffff; box-shadow: inset 0 -2px 0 rgba(0,0,0,.22); }
+    .usage-table td.cell-ok   { background: var(--emerald); color: #ffffff; }
+    .usage-table td.cell-warn { background: var(--amber);   color: #26160a; }
+    .usage-table td.cell-hot  { background: var(--rose);    color: #ffffff; }
     .usage-table td.cell-none { background: var(--surface-alt); color: var(--text-dim); opacity: .6; }
+    .usage-table tbody tr:hover td { filter: brightness(1.09); }
+    .usage-table td.xfocus { filter: brightness(1.09); }
+    .usage-table td.num:hover { outline: 2px solid var(--border-strong); outline-offset: -2px; position: relative; }
+    #keyTip {
+      display: none;
+      position: fixed;
+      z-index: 50;
+      background: var(--border-strong);
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 10px;
+      border-radius: 6px;
+      pointer-events: none;
+      box-shadow: 0 4px 10px rgba(0,0,0,.25);
+      white-space: nowrap;
+    }
     .usage-legend {
       display: flex;
       gap: 18px;
@@ -463,6 +486,50 @@
       white-space: pre-wrap;
       word-break: break-word;
     }
+
+    .timeline {
+      border-left: 2px solid var(--border);
+      margin-left: 6px;
+    }
+    .tl-row {
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      padding: 3px 0 3px 12px;
+      position: relative;
+      font-size: 12px;
+    }
+    .tl-row::before {
+      content: '';
+      position: absolute;
+      left: -5px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-dim);
+    }
+    .tl-row.tl-good::before { background: var(--emerald); }
+    .tl-row.tl-bad::before { background: var(--rose); }
+    .tl-row.tl-warn::before { background: var(--amber); }
+    .tl-t {
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--text-dim);
+      min-width: 64px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .tl-type {
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+      font-size: 10px;
+      color: var(--text-muted);
+      min-width: 72px;
+      flex-shrink: 0;
+    }
+    .tl-d { color: var(--text); word-break: break-word; }
 
     /* Usage Matrix */
     .data-table th:first-child,
@@ -929,8 +996,10 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       return;
     }
 
-    // Header row with key labels
-    const headerHtml = ['<th>Model</th>'].concat(usedKeys.map(id => `<th title="${esc(keyMasks[id])}">${esc(keyLabels[id])}</th>`)).join('');
+    // Header row with numbered key columns (hover/click reveals the key)
+    const headerHtml = ['<th>Model</th>'].concat(usedKeys.map((id, i) =>
+      `<th class="keynum" title="${esc(keyLabels[id])} · ${esc(keyMasks[id])}" onclick="showKeyTip(event, '${esc(`${i + 1} = ${keyLabels[id]} (${keyMasks[id]})`)}')">${i + 1}</th>`
+    )).join('');
 
     // Data rows
     const rowsHtml = usedModels.map(model => {
@@ -946,6 +1015,32 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     document.getElementById('usageThead').innerHTML = '<tr>' + headerHtml + '</tr>';
     document.getElementById('usageTbody').innerHTML = rowsHtml;
   }
+
+  function showKeyTip(evt, text) {
+    evt.stopPropagation();
+    let tip = document.getElementById('keyTip');
+    if (!tip) { tip = document.createElement('div'); tip.id = 'keyTip'; document.body.appendChild(tip); }
+    tip.textContent = text;
+    tip.style.display = 'block';
+    const r = evt.currentTarget.getBoundingClientRect();
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, r.left + r.width / 2 - tip.offsetWidth / 2)) + 'px';
+    tip.style.top = (r.bottom + 6) + 'px';
+    clearTimeout(tip._t);
+    tip._t = setTimeout(() => { tip.style.display = 'none'; }, 1800);
+  }
+
+  (function usageColumnFocus() {
+    const table = document.querySelector('.usage-table');
+    if (!table) return;
+    const clear = () => table.querySelectorAll('td.xfocus').forEach(n => n.classList.remove('xfocus'));
+    table.addEventListener('mouseover', (e) => {
+      const cell = e.target.closest('td');
+      clear();
+      if (!cell || cell.cellIndex === 0) return;
+      for (const row of table.tBodies[0].rows) row.cells[cell.cellIndex]?.classList.add('xfocus');
+    });
+    table.addEventListener('mouseleave', clear);
+  })();
 
   async function clearCooldowns() {
     try {
@@ -1013,6 +1108,34 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
   }
 
+  const EVENT_KIND = {
+    receive:  { label: 'received', tone: '' },
+    auth:     { label: 'auth',     tone: 'tl-good' },
+    body:     { label: 'body',     tone: '' },
+    pool:     { label: 'key pool', tone: '' },
+    order:    { label: 'order',    tone: '' },
+    select:   { label: 'attempt',  tone: '' },
+    result:   { label: 'google',   tone: '' },
+    cooldown: { label: 'cooldown', tone: 'tl-warn' },
+    cap:      { label: 'cap',      tone: 'tl-warn' },
+    budget:   { label: 'budget',   tone: 'tl-warn' },
+    transport:{ label: 'transport',tone: 'tl-bad' },
+    relay:    { label: 'relayed',  tone: 'tl-good' },
+    abort:    { label: 'aborted',  tone: 'tl-bad' },
+    fail:     { label: 'failed',   tone: 'tl-bad' },
+    reject:   { label: 'rejected', tone: 'tl-bad' }
+  };
+
+  function timelineHtml(eventsJson) {
+    let evs = [];
+    try { evs = JSON.parse(eventsJson || '[]'); } catch {}
+    if (!Array.isArray(evs) || !evs.length) return '';
+    return `<h3>Timeline</h3><div class="timeline">${evs.map(ev => {
+      const kind = EVENT_KIND[ev.type] || { label: ev.type || 'event', tone: '' };
+      return `<div class="tl-row ${kind.tone}"><span class="tl-t">+${Number(ev.t) || 0} ms</span><span class="tl-type">${esc(kind.label)}</span><span class="tl-d">${esc(ev.detail)}</span></div>`;
+    }).join('')}</div>`;
+  }
+
   async function showLogDetail(id) {
     try {
       const l = await api('/api/admin/logs/' + id);
@@ -1023,9 +1146,11 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <div class="log-detail-head">
             <strong>Log #${l.id}</strong>
             <span>${new Date(Number(l.created_at)).toLocaleString()} · ${esc(l.model)} · ${esc(l.key_label || 'no key')}${l.key_masked ? ` (${esc(l.key_masked)})` : ''} · attempt ${l.attempt}</span>
+            <span>trace <code style="font-family:'JetBrains Mono',monospace">${esc((l.trace_id || '').slice(0, 8)) || '—'}</code></span>
             ${resultTag(l)}
           </div>
           <div class="log-detail-body">
+            ${timelineHtml(l.events)}
             <h3>Request Body</h3>
             <pre>${esc(prettyPayload(l.request_body)) || '(empty)'}</pre>
             <h3>Response${l.response_body ? '' : ' — never reached Google'}</h3>
