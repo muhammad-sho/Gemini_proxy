@@ -19,13 +19,9 @@ const loginFailures = [];
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
 const SETUP_TOKEN = process.env.SETUP_TOKEN || crypto.randomBytes(32).toString("base64url");
 
-const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
-const LOG_LEVEL = (process.env.LOG_LEVEL || "info").toLowerCase();
 function log(level, category, message) {
-  const levelValue = LOG_LEVELS[level] || LOG_LEVELS.info;
-  if (levelValue < (LOG_LEVELS[LOG_LEVEL] || LOG_LEVELS.info)) return;
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
-  if (levelValue >= LOG_LEVELS.warn) console.error(line);
+  if (level === "warn" || level === "error") console.error(line);
   else console.log(line);
 }
 const dbg = (category, message) => log("debug", category, message);
@@ -756,7 +752,7 @@ setInterval(() => {
 }, 60_000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  log("info", "Boot", `Gemini proxy listening on port ${PORT} (log level: ${LOG_LEVEL})`);
+  log("info", "Boot", `Gemini proxy listening on port ${PORT} (full debug logging enabled)`);
   if (!hasAdmin()) log("info", "Setup", `one-time setup token: ${SETUP_TOKEN}`);
 });
 

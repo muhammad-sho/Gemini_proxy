@@ -269,7 +269,8 @@ dashboard setup. Add these to the `environment:` section of
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
-| `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, or `error`. Use `debug` for full request/upstream/key-rotation tracing |
+
+Logging is always at full debug verbosity — every request, upstream call, key rotation decision, auth event and admin action is written to stdout with a timestamp. Secrets (API keys, passwords, tokens) are always masked.
 
 See `.env.example` for a starting point.
 
