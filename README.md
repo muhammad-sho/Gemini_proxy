@@ -120,13 +120,14 @@ node server.js
 
 # Dashboard
 
-Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has three tabs:
+Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has four tabs:
 
 | Tab | What it does |
 | --- | --- |
 | **Overview & Usage** | Totals (client keys, Gemini keys, models, requests today), reset schedule, model sync time, plus the per model/key usage table with cooldown states |
 | **Client Keys** | Generate and manage the API keys your applications use |
 | **Gemini API Keys** | Add, enable/disable, and remove your Google Gemini keys |
+| **How to Use** | Copy-paste API examples for calling the proxy |
 
 Add your Google keys through the dashboard instead of pasting them directly
 into your applications or workflows.
@@ -138,6 +139,10 @@ into your applications or workflows.
 The proxy exposes the Gemini API using the standard Gemini request format.
 Point any Gemini-compatible app at the proxy and swap two things: the URL and
 the key.
+
+Supported endpoints: `GET /v1beta/models` (list models) and
+`POST /v1beta/models/{model}:generateContent`. Streaming responses
+(`streamGenerateContent`) and `countTokens` are not proxied.
 
 ```bash
 curl http://127.0.0.1:18765/v1beta/models/gemini-2.0-flash:generateContent \
@@ -260,6 +265,7 @@ dashboard setup. Add these to the `environment:` section of
 | `SETUP_TOKEN` | random, printed to logs | Your own token required to complete first-time setup |
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
+| `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |

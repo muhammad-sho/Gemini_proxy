@@ -644,8 +644,13 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
         ...(options.headers || {})
       }
     });
-    const data = await response.json();
-    if (!response.ok) throw Error(data.error?.message || data.error || 'Request failed');
+    if (response.status === 401) {
+      location.reload();
+      throw Error('Session expired');
+    }
+    let data = null;
+    try { data = await response.json(); } catch {}
+    if (!response.ok) throw Error(data?.error?.message || data?.error || 'Request failed');
     return data;
   }
 
