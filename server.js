@@ -11,6 +11,8 @@ const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
 const KEY_FALLBACK_ATTEMPTS = Math.max(1, Number(process.env.KEY_FALLBACK_ATTEMPTS || 2));
+const LOG_BODY_MAX_BYTES = Math.max(1024, Number(process.env.LOG_BODY_MAX_BYTES || 64 * 1024));
+const MAX_LOG_ENTRIES = Math.max(50, Number(process.env.MAX_LOG_ENTRIES || 1000));
 const KEY_LOOP_DEADLINE_MS = Number(process.env.KEY_LOOP_DEADLINE_MS || 0) || REQUEST_TIMEOUT_MS;
 const MODELS_CACHE_TTL_MS = Number(process.env.MODELS_CACHE_TTL_HOURS || 24) * 60 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -74,6 +76,20 @@ db.exec(`
     cooldown_reason TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (model, key_id)
   );
+  CREATE TABLE IF NOT EXISTS request_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at INTEGER NOT NULL,
+    model TEXT NOT NULL,
+    key_id INTEGER,
+    key_label TEXT,
+    key_masked TEXT,
+    status INTEGER,
+    outcome TEXT NOT NULL,
+    error_code TEXT,
+    attempt INTEGER NOT NULL DEFAULT 0,
+    request_body TEXT,
+    response_body TEXT
+  );
   CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -81,6 +97,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_requests_model_key_success_time ON requests(model, key_id, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_model_success_time ON requests(model, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at);
+  CREATE INDEX IF NOT EXISTS idx_request_logs_created ON request_logs(created_at);
 `);
 
 try { db.exec("ALTER TABLE model_key_state ADD COLUMN cooldown_reason TEXT NOT NULL DEFAULT ''"); } catch {}
@@ -293,6 +310,37 @@ function recordRequest(model, keyId, status) {
   db.prepare("INSERT INTO requests (model, key_id, status, created_at) VALUES (?, ?, ?, ?)").run(model, keyId, status, Date.now());
 }
 
+function maskSecrets(text) {
+  let out = String(text);
+  for (const row of db.prepare("SELECT api_key FROM api_keys").all()) out = out.split(row.api_key).join(maskKey(row.api_key));
+  for (const row of db.prepare("SELECT key_text FROM client_keys WHERE key_text IS NOT NULL").all()) out = out.split(row.key_text).join(maskKey(row.key_text));
+  return out;
+}
+
+function clipBody(value) {
+  const text = Buffer.isBuffer(value) ? value.toString("utf8") : String(value || "");
+  return text.length > LOG_BODY_MAX_BYTES ? text.slice(0, LOG_BODY_MAX_BYTES) + "...[truncated]" : text;
+}
+
+function upstreamErrorCode(result) {
+  try {
+    const error = JSON.parse(result.body.toString("utf8")).error || {};
+    return String(error.status || error.code || error.message || "").slice(0, 120) || null;
+  } catch { return null; }
+}
+
+function recordLog(entry) {
+  try {
+    db.prepare("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
+      .run(Date.now(), entry.model, entry.keyId ?? null, entry.keyLabel ?? null, entry.keyMasked ?? null,
+        entry.status ?? null, entry.outcome, entry.errorCode ?? null, entry.attempt ?? 0,
+        entry.requestBody === undefined ? null : maskSecrets(clipBody(entry.requestBody)),
+        entry.responseBody === undefined ? null : maskSecrets(clipBody(entry.responseBody)));
+  } catch (error) {
+    log("error", "Log", `failed to record request log: ${error.message}`);
+  }
+}
+
 let lastSweptUsageDay = null;
 function sweepDailyReset() {
   const today = pacificDayStart();
@@ -302,7 +350,8 @@ function sweepDailyReset() {
   lastSweptUsageDay = today;
   const purgedRequests = db.prepare("DELETE FROM requests WHERE created_at < ?").run(today).changes;
   const purgedCooldowns = db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
-  if (purgedRequests || purgedCooldowns) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s)`);
+  const purgedLogs = db.prepare("DELETE FROM request_logs WHERE id <= (SELECT id FROM request_logs ORDER BY id DESC LIMIT 1 OFFSET ?)").run(MAX_LOG_ENTRIES).changes;
+  if (purgedRequests || purgedCooldowns || purgedLogs) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s), ${purgedLogs} old log entr(ies)`);
 }
 
 function setCooldown(model, keyId, seconds, reason) {
@@ -522,7 +571,8 @@ async function handleModelsList(request, response) {
 async function handleGemini(request, response, model) {
   if (!localKeyIsValid(request)) {
     log("warn", "Auth", `rejected ${request.method} ${request.url}: invalid client key from ${clientAddress(request)}`);
-    return json(response, 401, { error: "Invalid proxy API key" });
+    recordLog({ model, status: 401, outcome: "rejected", errorCode: "INVALID_CLIENT_KEY" });
+    return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
   }
 
   let body;
@@ -530,6 +580,7 @@ async function handleGemini(request, response, model) {
   const everyKey = db.prepare("SELECT * FROM api_keys ORDER BY id").all();
   if (!everyKey.length) {
     log("warn", "Gemini", `${model}: request rejected, no Gemini API keys configured`);
+    recordLog({ model, status: 503, outcome: "rejected", errorCode: "NO_KEYS_CONFIGURED" });
     return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
   const usage = db.prepare("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
@@ -567,6 +618,13 @@ async function handleGemini(request, response, model) {
       const result = await forwardToGemini(request, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response });
       lastResult = result;
       recordRequest(model, selected.id, result.status);
+      recordLog({
+        model, keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
+        status: result.status,
+        outcome: result.status >= 200 && result.status < 300 ? "success" : "failed",
+        errorCode: result.status >= 200 && result.status < 300 ? null : upstreamErrorCode(result),
+        attempt, requestBody: body, responseBody: result.body
+      });
       const classification = classifyUpstream(result);
       if (classification === "daily_quota") {
         setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
@@ -581,6 +639,11 @@ async function handleGemini(request, response, model) {
       return returnUpstream(response, result);
     } catch (error) {
       log("warn", "Gemini", `key #${selected.id} transport failure on ${model}: ${error.message}`);
+      recordLog({
+        model, keyId: selected.id, keyLabel: selected.label, keyMasked: maskKey(selected.api_key),
+        status: null, outcome: "failed", errorCode: `transport: ${error.message}`.slice(0, 160),
+        attempt, requestBody: body
+      });
       setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
       if (response.writableEnded || response.destroyed) return;
     }
@@ -694,6 +757,28 @@ async function handleRequest(request, response) {
     const cleared = db.prepare("DELETE FROM model_key_state").run().changes;
     log("info", "Admin", `cleared all model/key cooldowns (${cleared} row(s))`);
     return json(response, 200, { ok: true, cleared });
+  }
+  if (url.pathname === "/api/admin/logs" && request.method === "GET") {
+    const model = (url.searchParams.get("model") || "").trim();
+    const outcome = (url.searchParams.get("outcome") || "").trim();
+    const q = (url.searchParams.get("q") || "").trim();
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit")) || 50));
+    const offset = Math.max(0, Number(url.searchParams.get("offset")) || 0);
+    const where = [];
+    const params = [];
+    if (model) { where.push("model = ?"); params.push(model); }
+    if (outcome) { where.push("outcome = ?"); params.push(outcome); }
+    if (q) { where.push("(model LIKE ? OR IFNULL(key_label,'') LIKE ? OR IFNULL(error_code,'') LIKE ? OR IFNULL(CAST(status AS TEXT),'') LIKE ?)"); const like = `%${q}%`; params.push(like, like, like, like); }
+    const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+    const logs = db.prepare(`SELECT id, created_at, model, key_label, key_masked, status, outcome, error_code, attempt FROM request_logs${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
+    const total = db.prepare(`SELECT COUNT(*) AS c FROM request_logs${whereSql}`).get(...params).c;
+    return json(response, 200, { logs, total, limit, offset });
+  }
+  const logMatch = url.pathname.match(/^\/api\/admin\/logs\/(\d+)$/);
+  if (logMatch && request.method === "GET") {
+    const entry = db.prepare("SELECT * FROM request_logs WHERE id = ?").get(Number(logMatch[1]));
+    if (!entry) return json(response, 404, { error: "Log entry not found" });
+    return json(response, 200, entry);
   }
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
     log("info", "Admin", `manual model refresh requested`);

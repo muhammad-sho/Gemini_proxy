@@ -11,7 +11,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Google's responses — successes and errors alike — are relayed to the client exactly as received
 * Per-key and per-model usage tracking in a web dashboard
 * Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
-* Web dashboard for managing keys, usage, and cooldown status
+* Web dashboard for managing keys, usage, cooldown status, and full request logs with payload inspection
 * SQLite storage — no external database needed
 * Docker and Docker Compose support
 * Simple API authentication with your own proxy API keys
@@ -128,6 +128,7 @@ Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has four tabs:
 | **Overview & Usage** | Totals (client keys, Gemini keys, models, requests today), reset schedule, model sync time, plus the per model/key usage table with cooldown states |
 | **Client Keys** | Generate and manage the API keys your applications use |
 | **Gemini API Keys** | Add and remove your Google Gemini keys |
+| **Request Logs** | Every generation attempt with time, model, key, attempt number, and result. Filter by model/result or search; click a row to inspect the exact request/response payloads (API keys masked) |
 | **How to Use** | Copy-paste API examples for calling the proxy |
 
 Add your Google keys through the dashboard instead of pasting them directly
@@ -268,6 +269,8 @@ dashboard setup. Add these to the `environment:` section of
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
 | `KEY_FALLBACK_ATTEMPTS` | `2` | How many different Gemini keys a single request may try before Google's last response is relayed to the client exactly as received |
+| `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database (oldest pruned automatically) |
+| `LOG_BODY_MAX_BYTES` | `65536` | Per side (request/response) payload size kept per log entry; larger payloads are truncated |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |

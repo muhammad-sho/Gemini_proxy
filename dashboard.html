@@ -357,6 +357,58 @@
 
     .empty-cell { color: var(--text-muted); font-style: italic; }
 
+    .cell-pill {
+      display: inline-block;
+      min-width: 38px;
+      text-align: center;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-weight: 800;
+      font-size: 14px;
+    }
+    .cell-ok   { background: var(--emerald-bg, rgba(5,150,105,.14)); color: var(--emerald); }
+    .cell-warn { background: var(--amber-bg, rgba(217,119,6,.16)); color: var(--amber); }
+    .cell-hot  { background: var(--rose-bg, rgba(220,38,38,.13)); color: var(--rose); }
+
+    .log-row { cursor: pointer; }
+    .log-row:hover td { background: var(--surface-alt); }
+    .log-detail-box {
+      margin-top: 8px;
+      border: 1px solid var(--border, var(--surface-alt));
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .log-detail-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 14px;
+      background: var(--surface-alt);
+      font-size: 13px;
+    }
+    .log-detail-body { padding: 0 14px 14px; }
+    .log-detail-body h3 {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      color: var(--text-muted);
+      margin: 14px 0 6px;
+    }
+    .log-detail-body pre {
+      background: var(--surface-alt);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      max-height: 340px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     /* Usage Matrix */
     .data-table th:first-child,
     .data-table td:first-child { text-align: left; font-weight: 600; }
@@ -417,6 +469,7 @@
     <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
     <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
     <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
   </nav>
 
@@ -449,25 +502,15 @@
       </div>
     </div>
     <div class="section-box">
-      <h2 class="section-title">Model Usage &amp; Cooldown Status</h2>
-      <p class="section-desc">Successful requests per Gemini key since the current reset window began, plus any active cooldowns.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h2 class="section-title" style="margin:0">Model Usage &amp; Cooldown Status</h2>
+        <button class="btn-tbl" id="clearCooldownsBtn" onclick="clearCooldowns()">Clear All Cooldowns</button>
+      </div>
+      <p class="section-desc">Successful requests per Gemini key since the reset window began. Green = ready, amber = brief cooldown (~60s), red = daily limit until the Pacific midnight reset.</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead id="usageThead"></thead>
           <tbody id="usageTbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <div class="section-box">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-        <h2 class="section-title" style="margin:0">Active Cooldowns</h2>
-        <button class="btn-tbl" id="clearCooldownsBtn" onclick="clearCooldowns()">Clear All Cooldowns</button>
-      </div>
-      <p class="section-desc">Keys currently benched per model, with the reason and time left. Rate-limit and transient errors recover in about a minute; daily-limit errors wait for the Pacific midnight reset.</p>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Model</th><th>Key</th><th>Reason</th><th>Cooling Until</th><th>Remaining</th></tr></thead>
-          <tbody id="cooldownTbody"><tr><td colspan="5" class="empty-notice">No active cooldowns — all keys ready.</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -527,6 +570,39 @@
           <tbody id="keysTbody"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+
+  <!-- Request Logs Panel -->
+  <div id="panel-logs" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Request Logs</h2>
+      <p class="section-desc">Every generateContent attempt with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
+        <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
+          <option value="">All results</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+          <option value="rejected">Rejected</option>
+        </select>
+        <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
+        <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Time</th><th>Model</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
+          <tbody id="logsTbody"><tr><td colspan="5" class="empty-notice">No log entries yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
+        <span id="logMeta"></span>
+        <span style="display:flex;gap:8px">
+          <button type="button" class="btn-tbl" id="logsNewerBtn" onclick="logsPage(-1)" style="display:none">&larr; Newer</button>
+          <button type="button" class="btn-tbl" id="logsOlderBtn" onclick="logsPage(1)" style="display:none">Older &rarr;</button>
+        </span>
+      </div>
+      <div id="logDetail" style="display:none"></div>
     </div>
   </div>
 
@@ -714,6 +790,8 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   function render(data) {
     const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
     const models = data.models || [];
+    allModels = models;
+    syncModelFilter();
 
     document.getElementById('ov-ck').textContent = (data.clientKeys || []).length;
     document.getElementById('ov-gk').textContent = (data.keys || []).length;
@@ -775,17 +853,22 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     us.forEach(r => { keyLabels[r.key_id] = r.label; keyMasks[r.key_id] = r.masked; });
 
     function cellHtml(row) {
-      const active = row.cooldown_until && Number(row.cooldown_until) > Date.now();
-      const badge = active
-        ? `<span class="status-tag tag-cooldown" title="${esc(row.cooldown_reason || 'quota')}">●</span>`
-        : `<span class="status-tag tag-ready">●</span>`;
-      return `<span style="font-weight:700;font-size:15px">${row.today}</span> ${badge}`;
+      const now = Date.now();
+      const active = row.cooldown_until && Number(row.cooldown_until) > now;
+      let cls = 'cell-ok', title = 'Ready';
+      if (active && row.cooldown_reason === 'daily_quota') {
+        cls = 'cell-hot';
+        title = `Daily limit reached — resets at ${new Date(Number(row.cooldown_until)).toLocaleTimeString()}`;
+      } else if (active) {
+        cls = 'cell-warn';
+        title = `${row.cooldown_reason || 'cooldown'} — ~${Math.max(1, Math.ceil((row.cooldown_until - now) / 1000))}s left`;
+      }
+      return `<span class="cell-pill ${cls}" title="${esc(title)}">${row.today}</span>`;
     }
 
     if (!us.length) {
       document.getElementById('usageThead').innerHTML = '';
       document.getElementById('usageTbody').innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in the current day window.</td></tr>';
-      renderCooldowns(data.cooldowns || []);
       return;
     }
 
@@ -803,46 +886,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
     document.getElementById('usageThead').innerHTML = '<tr>' + headerHtml + '</tr>';
     document.getElementById('usageTbody').innerHTML = rowsHtml;
-    renderCooldowns(data.cooldowns || []);
   }
-
-  const COOLDOWN_REASONS = {
-    daily_quota: 'Daily limit reached',
-    invalid_key: 'Invalid key',
-    high_demand: 'Rate limited / high demand',
-    upstream_error: 'Upstream error'
-  };
-
-  function fmtRemaining(until) {
-    let s = Math.max(0, Math.ceil((Number(until) - Date.now()) / 1000));
-    const h = Math.floor(s / 3600); s %= 3600;
-    const m = Math.floor(s / 60);
-    return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
-  }
-
-  function renderCooldowns(list) {
-    const tbody = document.getElementById('cooldownTbody');
-    if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-notice">No active cooldowns — all keys ready.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = list.map(c => {
-      const until = Number(c.until);
-      return `<tr>
-        <td><strong>${esc(c.model)}</strong></td>
-        <td><code style="font-family:'JetBrains Mono',monospace">${esc(c.label)} (${esc(c.masked)})</code></td>
-        <td><span class="status-tag tag-cooldown">${esc(COOLDOWN_REASONS[c.reason] || c.reason || 'Unknown')}</span></td>
-        <td>${new Date(until).toLocaleString()}</td>
-        <td data-until="${until}">${fmtRemaining(until)}</td>
-      </tr>`;
-    }).join('');
-  }
-
-  setInterval(() => {
-    document.querySelectorAll('#cooldownTbody td[data-until]').forEach(td => {
-      td.textContent = fmtRemaining(Number(td.dataset.until));
-    });
-  }, 1000);
 
   async function clearCooldowns() {
     try {
@@ -851,8 +895,89 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     } catch {}
   }
 
+  let allModels = [];
+
+  function syncModelFilter() {
+    const sel = document.getElementById('logModel');
+    const current = sel.value;
+    sel.innerHTML = '<option value="">All models</option>' + allModels.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    if ([...sel.options].some(o => o.value === current)) sel.value = current;
+  }
+
+  let logsOffset = 0;
+  let logsTotal = 0;
+  const LOG_PAGE_SIZE = 50;
+
+  function resultTag(l) {
+    if (l.outcome === 'success') return `<span class="status-tag tag-ready">${l.status}</span>`;
+    if (l.outcome === 'rejected') return `<span class="status-tag tag-off">rejected · ${l.status ?? 'ERR'}${l.error_code ? ' · ' + esc(l.error_code) : ''}</span>`;
+    return `<span class="status-tag tag-cooldown">${l.status ?? 'ERR'}${l.error_code ? ' · ' + esc(l.error_code) : ''}</span>`;
+  }
+
+  async function loadLogs(reset = true) {
+    if (reset) { logsOffset = 0; document.getElementById('logDetail').style.display = 'none'; }
+    const params = new URLSearchParams();
+    const model = document.getElementById('logModel').value;
+    const outcome = document.getElementById('logResult').value;
+    const q = document.getElementById('logSearch').value.trim();
+    if (model) params.set('model', model);
+    if (outcome) params.set('outcome', outcome);
+    if (q) params.set('q', q);
+    params.set('limit', String(LOG_PAGE_SIZE));
+    params.set('offset', String(logsOffset));
+    try {
+      const d = await api('/api/admin/logs?' + params.toString());
+      logsTotal = d.total;
+      document.getElementById('logsTbody').innerHTML = d.logs.length
+        ? d.logs.map(l => `<tr class="log-row" onclick="showLogDetail(${l.id})">
+            <td>${new Date(Number(l.created_at)).toLocaleTimeString()}</td>
+            <td><strong>${esc(l.model)}</strong></td>
+            <td><code style="font-family:'JetBrains Mono',monospace">${esc(l.key_label || '—')}${l.key_masked ? ` (${esc(l.key_masked)})` : ''}</code></td>
+            <td>${l.attempt || '—'}</td>
+            <td>${resultTag(l)}</td>
+          </tr>`).join('')
+        : '<tr><td colspan="5" class="empty-notice">No log entries match.</td></tr>';
+      document.getElementById('logMeta').textContent = `${d.total} log entr${d.total === 1 ? 'y' : 'ies'}`;
+      document.getElementById('logsNewerBtn').style.display = logsOffset > 0 ? '' : 'none';
+      document.getElementById('logsOlderBtn').style.display = logsOffset + LOG_PAGE_SIZE < d.total ? '' : 'none';
+    } catch {}
+  }
+
+  function logsPage(delta) {
+    logsOffset = Math.max(0, logsOffset + delta * LOG_PAGE_SIZE);
+    loadLogs(false);
+  }
+
+  function prettyPayload(text) {
+    if (!text) return '';
+    try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
+  }
+
+  async function showLogDetail(id) {
+    try {
+      const l = await api('/api/admin/logs/' + id);
+      const box = document.getElementById('logDetail');
+      box.style.display = 'block';
+      box.innerHTML = `
+        <div class="log-detail-box">
+          <div class="log-detail-head">
+            <strong>Log #${l.id}</strong>
+            <span>${new Date(Number(l.created_at)).toLocaleString()} · ${esc(l.model)} · ${esc(l.key_label || 'no key')}${l.key_masked ? ` (${esc(l.key_masked)})` : ''} · attempt ${l.attempt}</span>
+            ${resultTag(l)}
+          </div>
+          <div class="log-detail-body">
+            <h3>Request Body</h3>
+            <pre>${esc(prettyPayload(l.request_body)) || '(empty)'}</pre>
+            <h3>Response${l.response_body ? '' : ' — never reached Google'}</h3>
+            <pre>${esc(prettyPayload(l.response_body)) || '(empty)'}</pre>
+          </div>
+        </div>`;
+      box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch {}
+  }
+
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'howto'];
+    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'logs', 'howto'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -868,6 +993,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     if (updateHash && window.location.hash !== '#' + name) {
       history.replaceState(null, '', '#' + name);
     }
+    if (name === 'logs') loadLogs();
   }
 
   function initActiveTab() {
@@ -884,6 +1010,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
   async function load() {
     try { render(await api('/api/admin/state')); } catch (e) { console.error(e); }
+    if (document.getElementById('panel-logs')?.classList.contains('active')) loadLogs(false);
   }
 
   async function refreshModels() {
