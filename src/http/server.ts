@@ -62,7 +62,9 @@ export async function buildServer(config: EnvConfig, logger: Logger, db: Databas
         defaultSrc: ["'self'"],
         styleSrc: ["'self'", "'unsafe-inline'"],
         scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:"]
+        imgSrc: ["'self'", "data:"],
+        // Served over plain HTTP on LAN; upgrading to https:// breaks asset loading.
+        upgradeInsecureRequests: null
       }
     }
   });
