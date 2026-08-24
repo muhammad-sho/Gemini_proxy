@@ -5,52 +5,48 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 ## Features
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
-* **Best-key selection, best-to-worst** — ready keys first (least-used rotation per model); if none are ready, the least-bad key is tried anyway, starting with the soonest-expiring cooldown
-* Automatic retry on another key when one fails
-* Automatic cooldown when a key is overloaded or out of daily quota
-* Google's responses — successes and errors alike — are relayed to the client exactly as received
+* **Best-key selection** — ready keys first (least-used rotation per model); if none are ready, cooled keys are still tried as last resort, soonest-expiring cooldown first
+* Automatic retry on another key when one fails (`KEY_FALLBACK_ATTEMPTS`)
+* Automatic cooldown when a key hits rate limits, transient errors, or daily quota
+* Google's responses — successes and errors alike — are relayed to the client byte-for-byte
 * Per-key and per-model usage tracking in a web dashboard
-* Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
-* Web dashboard for managing keys, usage, cooldown status, and full request logs with payload inspection
+* Model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
+* Web dashboard: overview stats, client keys, provider credentials, model cache, request logs with timeline and payload inspection
 * SQLite storage — no external database needed
-* Docker and Docker Compose support
-* Simple API authentication with your own proxy API keys
+* Provider credentials encrypted at rest (AES-256-GCM)
+* Docker and Docker Compose support, non-root container with healthcheck
+* Client authentication with your own proxy API keys
 
 ---
 
-## How It Works
+## Architecture
 
-The proxy sits between your application and Google's Gemini API:
+The server is a modular TypeScript/Fastify application. Request flow:
+route → auth → validation → use case → router/adapters → repositories.
 
 ```text
-┌──────────────┐
-│   Your App   │
-│  (any tool)  │
-└──────┬───────┘
-       │
-       │ Gemini API request
-       │ x-proxy-api-key: <client key>
-       ▼
-┌──────────────────────┐
-│    Gemini Proxy      │
-│                      │
-│  Auth check          │
-│  Key selection       │
-│  Retry / cooldown    │
-└──────────┬───────────┘
-           │
-     ┌─────┼─────┬─────┐
-     ▼     ▼     ▼     ▼
-   Key 1  Key 2  Key 3  Key 4
-     │     │     │     │
-     └─────┴─────┴─────┴─────┘
-              │
-              ▼
-      Google Gemini API
+src/
+├── main.ts                  bootstrap + graceful shutdown
+├── config/env.ts            Zod-validated environment configuration
+├── shared/                  types, crypto (AES-GCM, hashing), time helpers
+├── infrastructure/
+│   ├── db/                  SQLite connection, numbered migrations, repositories
+│   ├── logging/             pino logger with secret masking
+│   └── providers/           gemini + openai-compatible upstream adapters
+├── domain/
+│   ├── auth/                admin sessions
+│   ├── providers/           adapter interface + error classification
+│   └── routing/             cooldown policies + key selection ordering
+├── application/gateway/     routing service (retries/deadline/logging), model cache service
+└── http/
+    ├── server.ts            Fastify composition root (helmet CSP, rate limit, static SPA)
+    └── routes/              health, gateway, auth, admin
+web/                         React 19 + Vite dashboard (built to dist-web/)
 ```
 
-Your application only needs to know the proxy URL and **one client API key**
-(generated in the dashboard). The real Google keys stay on your server.
+Upstream responses are relayed verbatim; the proxy never rewrites bodies.
+Every attempt is logged with a trace id, timeline events, classification,
+latency, and truncated/masked payloads.
 
 ---
 
@@ -58,311 +54,161 @@ Your application only needs to know the proxy URL and **one client API key**
 
 You only need Docker installed.
 
-## 1. Get the compose file and start
-
 ```bash
 mkdir gemini-proxy && cd gemini-proxy
 curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
-docker compose up -d
+SETUP_TOKEN=choose-a-long-secret APP_ENCRYPTION_KEY=$(openssl rand -base64 32) docker compose up -d
 ```
 
-This pulls the published image:
+* `SETUP_TOKEN` — the admin password used to log into the dashboard.
+* `APP_ENCRYPTION_KEY` — encrypts the Google API keys you add later (required in production).
 
-```text
-ghcr.io/muhammad-sho/gemini-proxy:latest
-```
+Check `docker compose logs -f`, then open `http://YOUR_SERVER_IP:18765`.
 
-> The image is built automatically after every push to `main`. A brand-new
-> repository must wait until that first build succeeds before pulling works.
-> Version tags are also published for `v*.*.*` releases.
+First-time setup:
 
-Check the logs:
+1. Sign in with `SETUP_TOKEN`.
+2. Open **Providers** and add your Google Gemini API keys.
+3. Open **Client Keys** and generate a key for your application (shown once).
+4. Optionally hit **Refresh cache** under **Models**.
 
-```bash
-docker compose logs -f
-```
+### Run from source (development)
 
-The dashboard will be available on:
-
-```text
-http://YOUR_SERVER_IP:18765
-```
-
-## 2. First-time setup
-
-1. Open `http://YOUR_SERVER_IP:18765`.
-2. If asked for a **setup token**, read it from the logs:
-   ```bash
-   docker compose logs gemini-proxy | grep "setup token"
-   ```
-3. Create your administrator account (username + password of at least 8
-   characters), then sign in.
-4. Open **Gemini API Keys** and add your Google Gemini keys.
-5. Open **Client Keys** and generate a key for your application. Every key has
-   a **Copy Key** button, so you can copy it again anytime.
-
-Done — start sending requests.
-
-### Run from source instead (development)
+Requires Node.js 22+.
 
 ```bash
 git clone https://github.com/muhammad-sho/Gemini_proxy.git
 cd Gemini_proxy
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+npm install --legacy-peer-deps
+npm run dev          # tsx watch on src/
 ```
 
-Or run directly with Node.js 22+ (no packages to install):
+Production-style local run:
 
 ```bash
-node server.js
+npm run build        # tsc -> dist/, vite -> dist-web/
+SETUP_TOKEN=secret APP_ENCRYPTION_KEY=$(openssl rand -base64 32) npm start
 ```
+
+Useful scripts: `npm run check` (typecheck server+web, lint, tests, dashboard build), `npm test` (Vitest), `npm run web:dev` (dashboard HMR against a running server).
 
 ---
 
 # Dashboard
 
-Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has four tabs:
+Sign in at `http://YOUR_SERVER_IP:18765`. Tabs:
 
 | Tab | What it does |
 | --- | --- |
-| **Overview & Usage** | Totals (client keys, Gemini keys, models, requests today), reset schedule, model sync time, plus the per model/key usage table with cooldown states |
-| **Client Keys** | Generate and manage the API keys your applications use |
-| **Gemini API Keys** | Add and remove your Google Gemini keys |
-| **Request Logs** | Every generation attempt with time, model, key, attempt number, and result. Filter by model/result or search; click a row to inspect the exact request/response payloads (API keys masked) |
-| **How to Use** | Copy-paste API examples for calling the proxy |
-
-Add your Google keys through the dashboard instead of pasting them directly
-into your applications or workflows.
+| **Overview** | Totals (client keys, providers, models, requests today), active cooldowns, usage per model/key, refresh-models and clear-cooldowns actions |
+| **Client keys** | Generate/revoke the API keys your applications use; restrict by model or group |
+| **Providers** | Add/remove Google Gemini (or OpenAI-compatible) credentials; optional per-credential base URL and model allowlist |
+| **Models** | Cached model list from Google with manual refresh |
+| **Logs** | Every request with outcome/status/attempt filters and body search; click a row for the full timeline and payloads |
 
 ---
 
 # API Usage
 
-The proxy exposes the Gemini API using the standard Gemini request format.
-Point any Gemini-compatible app at the proxy and swap two things: the URL and
-the key.
+Point any Gemini-compatible app at the proxy and swap two things: the URL and the key. Supported endpoints: `GET /v1beta/models` and `POST /v1beta/models/{model}:generateContent`. Streaming (`streamGenerateContent`) and `countTokens` are not proxied.
 
-Supported endpoints: `GET /v1beta/models` (list models) and
-`POST /v1beta/models/{model}:generateContent`. Streaming responses
-(`streamGenerateContent`) and `countTokens` are not proxied.
+The client key can be sent as `x-goog-api-key`, `Authorization: Bearer <key>`, or `?key=`:
 
 ```bash
 curl http://127.0.0.1:18765/v1beta/models/gemini-2.0-flash:generateContent \
   -H "Content-Type: application/json" \
-  -H "x-proxy-api-key: YOUR-CLIENT-KEY" \
-  -d '{
-    "contents": [
-      {
-        "parts": [
-          {
-            "text": "Say hello"
-          }
-        ]
-      }
-    ]
-  }'
+  -H "x-goog-api-key: YOUR-CLIENT-KEY" \
+  -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
 ```
 
-The response is Google's response, unchanged. Your app never sees which
-Google key handled the request.
+The response is Google's response, unchanged — including errors after all retries fail. Errors originating from the proxy use a normalized envelope:
 
----
-
-# Key Selection
-
-The proxy does **not** rotate round-robin. For each model it selects the key
-with the **fewest successful requests since the current daily window began**,
-so all your keys are consumed evenly:
-
-```text
-Key usage today for gemini-2.0-flash:
-  Key 1: 40   Key 2: 35   Key 3: 35   ← next request goes here
+```json
+{ "error": { "code": 503, "message": "No API keys configured", "requestId": "..." } }
 ```
 
-Usage is tracked per **model + key** combination, independently:
+Admin API lives under `/api/admin/*` and requires the session cookie issued by `POST /api/admin/login`; mutations additionally require the `x-csrf-token` header.
 
-```text
-Key 1 + gemini-2.0-flash
-Key 1 + gemini-2.0-flash-lite
-Key 2 + gemini-2.0-flash
-Key 2 + gemini-2.0-flash-lite
+---
+
+# Key Selection and Cooldowns
+
+For each model the proxy picks the credential with the fewest successful requests in the current window (least-used rotation). If that attempt fails, the next-best candidate is tried until `KEY_FALLBACK_ATTEMPTS` attempts or `KEY_LOOP_DEADLINE_MS` is exhausted; the last upstream response is relayed as-is.
+
+| Failure | Classification | Cooldown |
+| --- | --- | --- |
+| 400 "API key not valid" | invalid_key | 60 s |
+| Rate limit / 408 / 5xx | transient | 60 s |
+| Daily quota exceeded | daily_quota | Until midnight Pacific |
+| Other 4xx | permanent | none |
+
+Cooled-down keys drop out of rotation but remain last-resort candidates (soonest expiry first). Expired cooldowns are promoted back to ready automatically.
+
+---
+
+# Database and Backups
+
+SQLite at `DB_PATH` (default `/data/gemini-proxy.db` in Docker). Migrations run automatically at startup and are versioned in the `schema_version` table.
+
+Back up by copying the database file while the proxy is stopped, or online:
+
+```bash
+sqlite3 data/gemini-proxy.db ".backup 'data/backup-$(date +%F).db'"
 ```
 
-A limit reached on one combination never affects the others. Only successful
-requests count — failures do not.
-
-At every reset moment (midnight Pacific time) the proxy clears the previous
-day's usage records and expires finished cooldowns, so all keys start the new
-day at zero automatically — no restart needed.
-
----
-
-# Cooldowns and Retries
-
-When a key fails, the proxy marks that model/key combination unavailable,
-picks another key, and retries:
-
-| Failure | Cooldown |
-| --- | --- |
-| Overload / rate-limit / server errors (408, 429, 5xx) | 60 seconds |
-| Daily quota exceeded | Until Gemini's next midnight Pacific reset |
-
-This prevents a temporarily limited key from repeatedly receiving requests.
-
----
-
-# Models
-
-Models are **not** configured manually. The model list is discovered from
-Google and **cached locally**, so calls to `GET /v1beta/models` (like the ones
-n8n makes during setup) return instantly instead of waiting for Google.
-
-* First call with no cache: fetches from Google once, then caches.
-* Every later call: served from cache — no delay.
-* The cache refreshes itself in the background when it gets older than 24
-  hours (`MODELS_CACHE_TTL_HOURS`, see settings). Your request is never
-  delayed by a refresh.
-* Want to force it? Use the **Refresh** button next to *Model Sync* on the
-  dashboard's Overview tab.
-
-The proxy also removes models that Google no longer offers and records the
-sync time shown in the dashboard.
-
-Removing a model from the list never deletes its usage history: if Google
-temporarily drops a model, its per-key usage and cooldown data stay visible
-until the normal daily reset clears them, and requests to that model are
-still forwarded to Google (Google decides whether to serve it).
-
----
-
-# Database
-
-The proxy uses SQLite (stored at `./data/local-gemini-proxy.db` next to your
-`docker-compose.yml`) to persist:
-
-* Administrator account
-* Client API keys
-* Gemini API keys
-* Usage records and cooldown state
-
-The directory is mounted as a bind mount by Docker Compose, survives restarts
-and image upgrades, and needs no manual permission fixes. Back up the `data/`
-folder to back up everything.
-
-Do not delete the database unless you intentionally want to reset the proxy's
-stored state.
+The database holds the admin password hash, client key hashes, usage counters, cooldown state, request logs, audit log, and **encrypted** provider credentials.
 
 ---
 
 # Environment Variables
 
-All configuration is optional; normal operation needs nothing beyond the
-dashboard setup. Add these to the `environment:` section of
-`docker-compose.yml` if needed:
+See `.env.example`. Highlights:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `PORT` | `18765` | Port the proxy listens on |
-| `DB_PATH` | `/data/local-gemini-proxy.db` | SQLite database location inside the container |
-| `SETUP_TOKEN` | random, printed to logs | Your own token required to complete first-time setup |
-| `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
-| `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
-| `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
-| `KEY_FALLBACK_ATTEMPTS` | `2` | How many different Gemini keys a single request may try before Google's last response is relayed to the client exactly as received |
-| `MAX_LOG_ENTRIES` | `1000` | Maximum request-log entries kept in the database (oldest pruned automatically) |
-| `LOG_BODY_MAX_BYTES` | `65536` | Per side (request/response) payload size kept per log entry; larger payloads are truncated |
-| `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
-| `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
-| `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |
+| `PORT` | `18765` | Listen port |
+| `DB_PATH` | `./data/gemini-proxy.db` | SQLite location |
+| `SETUP_TOKEN` | required | Admin login password (seeded as a bcrypt hash on first start) |
+| `APP_ENCRYPTION_KEY` | required in production | 32-byte base64 AES-256-GCM key for credentials at rest |
+| `KEY_FALLBACK_ATTEMPTS` | `2` | Upstream attempts per request before relaying the last response |
+| `KEY_LOOP_DEADLINE_MS` | `30000` | Total budget for all attempts |
+| `REQUEST_TIMEOUT_MS` | `60000` | Per-attempt upstream timeout |
+| `MODELS_CACHE_TTL_HOURS` | `24` | Model cache freshness |
+| `MAX_LOG_ENTRIES` | `1000` | Request-log retention (oldest pruned) |
+| `LOG_BODY_MAX_BYTES` | `65536` | Stored bytes per request/response body |
+| `MAX_BODY_BYTES` / `MAX_RESPONSE_BYTES` | 10 MB / 50 MB | Payload limits |
+| `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
 
-Logging is always at full debug verbosity — every request, upstream call, key rotation decision, auth event and admin action is written to stdout with a timestamp. Secrets (API keys, passwords, tokens) are always masked.
-
-See `.env.example` for a starting point.
+All secrets are masked in logs. Readiness (`/health/ready`) checks database, schema version, and encryption availability.
 
 ---
 
-# Docker Commands
+# CI
 
-Start:
-
-```bash
-docker compose up -d
-```
-
-Update to the latest image (data is kept):
-
-```bash
-docker compose pull && docker compose up -d
-```
-
-View logs:
-
-```bash
-docker compose logs -f
-```
-
-Stop:
-
-```bash
-docker compose down
-```
-
-Restart:
-
-```bash
-docker compose restart
-```
+GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard build, and a fresh-database migration smoke test on every push/PR: `.github/workflows/ci.yml`. Container images publish to GHCR on `main` and `v*.*.*` tags.
 
 ---
 
 # Security
 
-API requests require a valid client key sent as:
-
-```text
-x-proxy-api-key: YOUR-CLIENT-KEY
-```
-
-Client keys and passwords are stored hashed; sign-in is protected by session
-cookies, CSRF tokens, and login rate limiting.
-
-Google Gemini API keys are stored in the local SQLite database in plaintext
-because the proxy must recover them to authenticate upstream. Protect the
-server and back the database up securely.
-
-Do not expose port `18765` straight to the public internet. Put it behind an
-HTTPS reverse proxy or keep it on a trusted network / VPN.
+* Admin auth: session cookie (`httpOnly`, SameSite=Lax) + CSRF token cookie mirrored via `x-csrf-token`; login is rate-limited and audited.
+* Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
+* Provider credentials encrypted at rest with AES-256-GCM (`APP_ENCRYPTION_KEY`).
+* Helmet CSP, strict response headers, body-size limits everywhere.
+* Do not expose port 18765 directly to the internet — put it behind an HTTPS reverse proxy or keep it on a trusted network.
 
 ---
 
 # Troubleshooting
 
-## 401 Unauthorized
-
-Check that the request contains the `x-proxy-api-key` header and that the
-value matches a client key generated in the dashboard (**Client Keys** tab).
-
-## 503 No Gemini API keys
-
-No Google keys are configured at all. Add at least one key in the
-**Gemini API Keys** tab — cooled-down keys are still tried automatically,
-so this only appears with an empty pool.
-
-## Rate Limit Errors
-
-Check the dashboard for the affected model/key combination. The proxy already
-rotated to another available key when possible.
-
-## Database Is Read-Only
-
-Make sure the directory containing the SQLite database is writable by the
-container. The provided Compose file handles this automatically, including on
-SELinux hosts via the `:Z` mount label.
+* **401 Unauthorized** — missing/invalid client key; generate one under **Client Keys**.
+* **Model not permitted** — the client key's allowlist doesn't include this model.
+* **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
+* **Readiness failing on encryption** — set `APP_ENCRYPTION_KEY`.
+* **Database read-only** — ensure the data directory is writable by the container user (Compose mounts handle SELinux via `:Z`).
 
 ---
 
 # Project
 
-Repository:
-
-https://github.com/muhammad-sho/Gemini_proxy
+Repository: https://github.com/muhammad-sho/Gemini_proxy

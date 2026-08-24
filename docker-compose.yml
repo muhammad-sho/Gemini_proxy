@@ -9,4 +9,13 @@ services:
       - ./data:/data:Z
     environment:
       PORT: 18765
-      DB_PATH: /data/local-gemini-proxy.db
+      DB_PATH: /data/gemini-proxy.db
+      NODE_ENV: production
+      # Admin login token for the dashboard (required)
+      SETUP_TOKEN: ${SETUP_TOKEN:?set SETUP_TOKEN in .env}
+      # Encrypts provider API keys at rest (required in production).
+      # Generate with: openssl rand -base64 32
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+
+# Backups: stop the container (or use SQLite's .backup command) and copy ./data
+# e.g. sqlite3 data/gemini-proxy.db ".backup 'data/backup-$(date +%F).db'"

@@ -2,3 +2,7 @@
 *.db
 *.db-shm
 *.db-wal
+data/
+dist/
+dist-web/
+node_modules/
