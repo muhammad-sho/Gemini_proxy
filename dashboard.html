@@ -852,8 +852,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
   function render(data) {
     const totalReq = (data.usage || []).reduce((s, r) => s + (r.today || 0), 0);
     const models = data.models || [];
-    allModels = models.map(m => (typeof m === 'string' ? m : m.name));
-    syncModelFilter();
 
     document.getElementById('ov-ck').textContent = (data.clientKeys || []).length;
     document.getElementById('ov-gk').textContent = (data.keys || []).length;
@@ -956,13 +954,13 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     } catch {}
   }
 
-  let allModels = [];
-
-  function syncModelFilter() {
+  function syncModelFilter(models) {
     const sel = document.getElementById('logModel');
+    const desired = '<option value="">All models</option>' + models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
+    if (sel.innerHTML === desired) return;
     const current = sel.value;
-    sel.innerHTML = '<option value="">All models</option>' + allModels.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    if ([...sel.options].some(o => o.value === current)) sel.value = current;
+    sel.innerHTML = desired;
+    sel.value = [...sel.options].some(o => o.value === current) ? current : '';
   }
 
   let logsOffset = 0;
@@ -989,6 +987,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     try {
       const d = await api('/api/admin/logs?' + params.toString());
       logsTotal = d.total;
+      if (Array.isArray(d.models)) syncModelFilter(d.models);
       document.getElementById('logsTbody').innerHTML = d.logs.length
         ? d.logs.map(l => `<tr class="log-row" onclick="showLogDetail(${l.id})">
             <td>${new Date(Number(l.created_at)).toLocaleTimeString()}</td>

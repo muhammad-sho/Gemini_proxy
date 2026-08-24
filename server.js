@@ -776,7 +776,8 @@ async function handleRequest(request, response) {
     const whereSql = where.length ? ` WHERE ${where.join(" AND ")}` : "";
     const logs = db.prepare(`SELECT id, created_at, model, key_label, key_masked, status, outcome, error_code, attempt FROM request_logs${whereSql} ORDER BY id DESC LIMIT ? OFFSET ?`).all(...params, limit, offset);
     const total = db.prepare(`SELECT COUNT(*) AS c FROM request_logs${whereSql}`).get(...params).c;
-    return json(response, 200, { logs, total, limit, offset });
+    const logModels = db.prepare("SELECT DISTINCT model FROM request_logs ORDER BY model").all().map(r => r.model);
+    return json(response, 200, { logs, total, limit, offset, models: logModels });
   }
   const logMatch = url.pathname.match(/^\/api\/admin\/logs\/(\d+)$/);
   if (logMatch && request.method === "GET") {
