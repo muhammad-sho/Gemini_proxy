@@ -218,6 +218,10 @@ db.exec(`
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS aliases (
+    alias TEXT PRIMARY KEY,
+    target_model TEXT NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS idx_requests_model_key_success_time ON requests(model, key_id, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_model_success_time ON requests(model, status, created_at);
   CREATE INDEX IF NOT EXISTS idx_requests_created_at ON requests(created_at);
@@ -392,6 +396,11 @@ function modelNameFromPath(path) {
   const match = path.match(/^\/v1beta\/models\/([^/:]+):generateContent$/);
   if (!match) return null;
   try { return decodeURIComponent(match[1]); } catch { return null; }
+}
+
+function resolveModelAlias(model) {
+  const alias = db.prepare("SELECT target_model FROM aliases WHERE alias = ?").get(model);
+  return alias ? alias.target_model : model;
 }
 
 function poolKeys() {
@@ -849,6 +858,10 @@ async function handleGemini(request, response, model) {
   }
   mark("auth", "client key accepted");
 
+  // Resolve model alias
+  model = resolveModelAlias(model);
+  mark("auth", `resolved model to '${model}'`);
+
   const clientKeyId = getClientKeyIdFromRequest(request);
   if (!appKeyAllowsModel(clientKeyId, model)) {
     mark("reject", `model '${model}' not allowed for this app key`);
@@ -1224,8 +1237,9 @@ async function handleRequest(request, response) {
     const models = db.prepare("SELECT name FROM models ORDER BY name").all();
     const credentialModels = db.prepare("SELECT credential_id, model FROM credential_models").all();
     const clientKeyModels = db.prepare("SELECT client_key_id, model FROM client_key_models").all();
+    const aliases = db.prepare("SELECT alias, target_model FROM aliases ORDER BY alias").all();
     const cooldowns = db.prepare("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
-    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns, credentialModels, clientKeyModels });
+    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns, credentialModels, clientKeyModels, aliases });
   }
   if (url.pathname === "/api/admin/cooldowns/clear" && request.method === "POST") {
     const cleared = db.prepare("DELETE FROM model_key_state").run().changes;
@@ -1260,6 +1274,30 @@ async function handleRequest(request, response) {
     const result = await refreshModelsOnce(syntheticModelsRequest());
     const ok = result.status >= 200 && result.status < 300;
     return json(response, ok ? 200 : 502, { ok, status: result.status });
+  }
+  if (url.pathname === "/api/admin/aliases" && request.method === "GET") {
+    const aliases = db.prepare("SELECT alias, target_model FROM aliases ORDER BY alias").all();
+    return json(response, 200, aliases);
+  }
+  if (url.pathname === "/api/admin/aliases" && request.method === "POST") {
+    let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
+    if (!body.alias || !body.target_model) return json(response, 400, { error: "Alias and target_model are required" });
+    if (!/^[a-z0-9_-]{1,32}$/.test(body.alias)) return json(response, 400, { error: "Alias must be 1-32 lowercase chars, numbers, underscore, hyphen" });
+    try {
+      db.prepare("INSERT INTO aliases (alias, target_model) VALUES (?,?)").run(String(body.alias), String(body.target_model));
+    } catch (e) {
+      if (String(e.code).includes("UNIQUE")) return json(response, 409, { error: "Alias already exists" });
+      throw e;
+    }
+    log("info", "Admin", `alias created: ${body.alias} -> ${body.target_model}`);
+    return json(response, 201, { ok: true });
+  }
+  const aliasMatch = url.pathname.match(/^\/api\/admin\/aliases\/([^\/]+)$/);
+  if (aliasMatch && request.method === "DELETE") {
+    const alias = aliasMatch[1];
+    db.prepare("DELETE FROM aliases WHERE alias = ?").run(alias);
+    log("info", "Admin", `alias deleted: ${alias}`);
+    return json(response, 200, { ok: true });
   }
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }

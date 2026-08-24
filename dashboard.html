@@ -624,11 +624,12 @@
     </div>
   </header>
 
-  <!-- Navigation -->
+<!-- Navigation -->
   <nav class="nav-row">
-    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview &amp; Usage</button>
+    <button class="nav-tab active" data-tab="overview" onclick="showPanel('overview',this)">Overview & Usage</button>
     <button class="nav-tab" data-tab="client-keys" onclick="showPanel('client-keys',this)">Client Keys</button>
-    <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Gemini API Keys</button>
+    <button class="nav-tab" data-tab="gemini-keys" onclick="showPanel('gemini-keys',this)">Provider API Keys</button>
+    <button class="nav-tab" data-tab="model-aliases" onclick="showPanel('model-aliases',this)">Model Aliases</button>
     <button class="nav-tab" data-tab="logs" onclick="showPanel('logs',this)">Request Logs</button>
     <button class="nav-tab" data-tab="howto" onclick="showPanel('howto',this)">How to Use</button>
   </nav>
@@ -687,11 +688,15 @@
     <div id="generatedClientKey" class="key-alert"></div>
     <div class="section-box">
       <h2 class="section-title">Generate Client Key</h2>
-      <p class="section-desc">Generate an API key for any app or service. Every key keeps a Copy button so you can grab it again anytime.</p>
+      <p class="section-desc">Generate an API key for any app or service. Define which models this key can access.</p>
       <form id="clientKeyForm" class="form-flex">
         <div class="field-col">
           <label class="field-label">Key Label / Service Name</label>
           <input type="text" name="label" class="form-input" placeholder="e.g. n8n-automation-flow" required>
+        </div>
+        <div class="field-col" style="flex:1 1 100%;margin-top:8px">
+          <label class="field-label">Allowed Models (empty = all models)</label>
+          <div id="clientKeyModelsCheckboxes" style="max-height:120px;overflow-y:auto;border:1px solid var(--border);padding:12px;border-radius:0;background:var(--surface-alt)"></div>
         </div>
         <button type="submit" class="btn-primary">Generate Key</button>
       </form>
@@ -702,7 +707,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Key Prefix</th><th>Allowed Models</th><th>Actions</th></tr>
           </thead>
           <tbody id="clientKeysTbody"></tbody>
         </table>
@@ -713,29 +718,74 @@
   <!-- Gemini Keys Panel -->
   <div id="panel-gemini-keys" class="panel">
     <div class="section-box">
-      <h2 class="section-title">Add Gemini API Key</h2>
-      <p class="section-desc">Add upstream Google Gemini keys for automatic least-used routing.</p>
+      <h2 class="section-title">Add Provider API Key</h2>
+      <p class="section-desc">Add upstream provider keys for automatic least-used routing. Select the provider type, enter the key, and choose which models this key can serve.</p>
       <form id="keyForm" class="form-flex">
         <div class="field-col">
           <label class="field-label">Account Label</label>
           <input type="text" name="label" class="form-input" placeholder="e.g. Google-Account-01" required>
         </div>
+        <div class="field-col">
+          <label class="field-label">Provider</label>
+          <select name="provider" id="keyProvider" class="form-input" required>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai_compatible">OpenAI-Compatible</option>
+          </select>
+        </div>
         <div class="field-col" style="flex:2">
-          <label class="field-label">Gemini API Key</label>
-          <input type="password" name="key" class="form-input" placeholder="AIzaSy..." required>
+          <label class="field-label">Base URL (optional, for OpenAI-compatible)</label>
+          <input type="text" name="base_url" id="keyBaseUrl" class="form-input" placeholder="https://api.openai.com/v1">
+        </div>
+        <div class="field-col" style="flex:2">
+          <label class="field-label">API Key</label>
+          <input type="password" name="key" class="form-input" placeholder="AIzaSy... or sk-..." required>
+        </div>
+        <div class="field-col" style="flex:1 1 100%;margin-top:8px">
+          <label class="field-label">Models this key can serve</label>
+          <div id="keyModelsCheckboxes" style="max-height:120px;overflow-y:auto;border:1px solid var(--border);padding:12px;border-radius:0;background:var(--surface-alt)"></div>
         </div>
         <button type="submit" class="btn-primary">Add Key</button>
       </form>
     </div>
     <div class="section-box">
-      <h2 class="section-title">Configured Gemini Keys</h2>
+      <h2 class="section-title">Configured Provider Keys</h2>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Provider</th><th>Key Prefix</th><th>Models</th><th>Actions</th></tr>
           </thead>
           <tbody id="keysTbody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Model Aliases Panel -->
+  <div id="panel-model-aliases" class="panel">
+    <div class="section-box">
+      <h2 class="section-title">Model Aliases</h2>
+      <p class="section-desc">Define shorthand names that resolve to canonical model names. Useful for stable aliases like <code>fast</code> → <code>gemini-2.5-flash</code> that can be updated without changing client code.</p>
+      <form id="aliasForm" class="form-flex" style="margin-bottom:24px">
+        <div class="field-col">
+          <label class="field-label">Alias</label>
+          <input type="text" name="alias" class="form-input" placeholder="e.g. fast, pro, cheap" required pattern="^[a-z0-9_-]{1,32}$" title="Lowercase, numbers, underscore, hyphen only (1-32 chars)">
+        </div>
+        <div class="field-col" style="flex:2">
+          <label class="field-label">Target Model (canonical name)</label>
+          <select id="aliasTargetModel" class="form-input" required>
+            <option value="">Select a model...</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-primary">Add Alias</button>
+      </form>
+      <div class="section-box">
+        <h2 class="section-title">Configured Aliases</h2>
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr><th>Alias</th><th>Target Model</th><th>Actions</th></tr></thead>
+            <tbody id="aliasesTbody"><tr><td colspan="3" class="empty-notice">No aliases configured.</td></tr></tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -747,6 +797,7 @@
       <p class="section-desc">Every generateContent attempt with its outcome. Click a row to inspect the exact request and response payloads — API keys are masked.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
         <select id="logModel" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All models</option></select>
+        <select id="logProvider" class="form-input" style="width:auto" onchange="loadLogs()"><option value="">All providers</option><option value="gemini">Gemini</option><option value="openai_compatible">OpenAI-Compatible</option></select>
         <select id="logResult" class="form-input" style="width:auto" onchange="loadLogs()">
           <option value="">All results</option>
           <option value="success">Success</option>
@@ -756,10 +807,14 @@
         <input id="logSearch" class="form-input" style="flex:1;min-width:160px" placeholder="Search model, key label, status code..." oninput="clearTimeout(window.__logTimer);window.__logTimer=setTimeout(loadLogs,300)">
         <button type="button" class="btn-primary" onclick="loadLogs()">Refresh</button>
       </div>
+      <div style="display:flex;gap:10px;margin-bottom:14px">
+        <button type="button" class="btn-tbl" onclick="exportLogs('json')">Export JSON</button>
+        <button type="button" class="btn-tbl" onclick="exportLogs('csv')">Export CSV</button>
+      </div>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Time</th><th>Model</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
-          <tbody id="logsTbody"><tr><td colspan="5" class="empty-notice">No log entries yet.</td></tr></tbody>
+          <thead><tr><th>Time</th><th>Model</th><th>Provider</th><th>Key</th><th>Attempt</th><th>Result</th></tr></thead>
+          <tbody id="logsTbody"><tr><td colspan="6" class="empty-notice">No log entries yet.</td></tr></tbody>
         </table>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--text-muted)">
@@ -986,25 +1041,49 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
     const ck = data.clientKeys || [];
     document.getElementById('clientKeysTbody').innerHTML = ck.length
-      ? ck.map(k => `<tr>
-          <td><strong>${esc(k.label)}</strong></td>
-          <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
-          <td>
-            <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
-          </td>
-        </tr>`).join('')
-      : '<tr><td colspan="3" class="empty-notice">No client keys configured.</td></tr>';
+      ? ck.map(k => {
+          const allowedModels = (data.clientKeyModels || []).filter(m => m.client_key_id === k.id).map(m => m.model);
+          const modelsHtml = allowedModels.length ? allowedModels.map(m => `<span style="background:var(--emerald-bg);color:var(--emerald);padding:2px 6px;border-radius:0;font-size:11px;margin-right:4px">${esc(m)}</span>`).join('') : '<span style="color:var(--text-muted);font-size:11px">all models</span>';
+          return `<tr>
+            <td><strong>${esc(k.label)}</strong></td>
+            <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
+            <td>${modelsHtml}</td>
+            <td>
+              <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
+            </td>
+          </tr>`}).join('')
+        : '<tr><td colspan="4" class="empty-notice">No client keys configured.</td></tr>';
 
     const gk = data.keys || [];
     document.getElementById('keysTbody').innerHTML = gk.length
-      ? gk.map(k => `<tr>
-          <td><strong>${esc(k.label)}</strong></td>
-          <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
-          <td>
-            <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Delete</button>
-          </td>
+      ? gk.map(k => {
+          const credModels = (data.credentialModels || []).filter(m => m.credential_id === k.id).map(m => m.model);
+          const modelsHtml = credModels.length ? credModels.map(m => `<span style="background:var(--emerald-bg);color:var(--emerald);padding:2px 6px;border-radius:0;font-size:11px;margin-right:4px">${esc(m)}</span>`).join('') : '<span style="color:var(--text-muted);font-size:11px">all models</span>';
+          const providerBadge = k.provider ? `<span style="background:var(--surface-alt);color:var(--text-dim);padding:2px 6px;border-radius:0;font-size:11px;margin-right:4px">${esc(k.provider)}</span>` : '';
+          const encryptedBadge = k.encrypted ? `<span style="background:var(--amber-bg);color:var(--amber);padding:2px 6px;border-radius:0;font-size:11px">🔒</span>` : '';
+          return `<tr>
+            <td><strong>${esc(k.label)}</strong></td>
+            <td>${providerBadge} ${encryptedBadge} <code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
+            <td>${modelsHtml}</td>
+            <td>
+              <button class="btn-tbl" onclick="editKeyModels(${k.id}, ${JSON.stringify(credModels).replace(/"/g, '"')})">Manage Models</button>
+              <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Delete</button>
+            </td>
+          </tr>`}).join('')
+        : '<tr><td colspan="5" class="empty-notice">No provider API keys configured.</td></tr>';
+
+    // Render aliases
+    const aliases = data.aliases || [];
+    const aliasesTbody = document.getElementById('aliasesTbody');
+    if (aliasesTbody) {
+      aliasesTbody.innerHTML = aliases.length
+        ? aliases.map(a => `<tr>
+          <td><code style="font-family:'JetBrains Mono',monospace">${esc(a.alias)}</code></td>
+          <td><strong>${esc(a.target_model)}</strong></td>
+          <td><button class="btn-tbl btn-tbl-danger" onclick="deleteAlias('${esc(a.alias)}')">Delete</button></td>
         </tr>`).join('')
-      : '<tr><td colspan="3" class="empty-notice">No Gemini API keys configured.</td></tr>';
+        : '<tr><td colspan="3" class="empty-notice">No aliases configured.</td></tr>';
+    }
 
     const us = data.usage || [];
 
@@ -1109,9 +1188,11 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     if (reset) { logsOffset = 0; }
     const params = new URLSearchParams();
     const model = document.getElementById('logModel').value;
+    const provider = document.getElementById('logProvider').value;
     const outcome = document.getElementById('logResult').value;
     const q = document.getElementById('logSearch').value.trim();
     if (model) params.set('model', model);
+    if (provider) params.set('provider', provider);
     if (outcome) params.set('outcome', outcome);
     if (q) params.set('q', q);
     params.set('limit', String(LOG_PAGE_SIZE));
@@ -1124,11 +1205,12 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
         ? d.logs.map(l => `<tr class="log-row" onclick="showLogDetail(${l.id})">
             <td>${new Date(Number(l.created_at)).toLocaleTimeString()}</td>
             <td><strong>${esc(l.model)}</strong></td>
+            <td><span style="background:var(--surface-alt);color:var(--text-dim);padding:2px 6px;border-radius:0;font-size:11px">${esc(l.provider || 'gemini')}</span></td>
             <td><code style="font-family:'JetBrains Mono',monospace">${esc(l.key_label || '—')}${l.key_masked ? ` (${esc(l.key_masked)})` : ''}</code></td>
             <td>${l.attempt || '—'}</td>
             <td>${resultTag(l)}</td>
           </tr>`).join('')
-        : '<tr><td colspan="5" class="empty-notice">No log entries match.</td></tr>';
+        : '<tr><td colspan="6" class="empty-notice">No log entries match.</td></tr>';
       document.getElementById('logMeta').textContent = `${d.total} log entr${d.total === 1 ? 'y' : 'ies'}`;
       document.getElementById('logsNewerBtn').style.display = logsOffset > 0 ? '' : 'none';
       document.getElementById('logsOlderBtn').style.display = logsOffset + LOG_PAGE_SIZE < d.total ? '' : 'none';
@@ -1223,8 +1305,246 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     copyText(logDebugText(currentLog), button);
   }
 
+  // --- Model Aliases ---
+  async function loadAliases() {
+    try {
+      const aliases = await api('/api/admin/aliases');
+      renderAliases(aliases);
+    } catch (e) { console.error(e); }
+  }
+
+  function renderAliases(aliases) {
+    const tbody = document.getElementById('aliasesTbody');
+    if (!aliases || !aliases.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-notice">No aliases configured.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = aliases.map(a => `<tr>
+      <td><code style="font-family:'JetBrains Mono',monospace">${esc(a.alias)}</code></td>
+      <td><strong>${esc(a.target_model)}</strong></td>
+      <td><button class="btn-tbl btn-tbl-danger" onclick="deleteAlias('${esc(a.alias)}')">Delete</button></td>
+    </tr>`).join('');
+  }
+
+  document.getElementById('aliasForm').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(event.target);
+      await api('/api/admin/aliases', { method: 'POST', body: JSON.stringify({ alias: form.get('alias'), target_model: form.get('target_model') }) });
+      event.target.reset();
+      loadAliases();
+    } catch (err) { alert(err.message); }
+  };
+
+  async function deleteAlias(alias) {
+    if (!confirm(`Delete alias "${alias}"?`)) return;
+    try {
+      await api('/api/admin/aliases/' + alias, { method: 'DELETE' });
+      loadAliases();
+    } catch (err) { alert(err.message); }
+  }
+
+  // --- Provider Key Model Checkboxes ---
+  async function renderKeyModelsCheckboxes() {
+    const container = document.getElementById('keyModelsCheckboxes');
+    if (!container) return;
+    try {
+      const models = await api('/api/admin/providers/gemini/models', { method: 'POST', body: JSON.stringify({ key: '' }) });
+      const modelNames = models.models?.map(m => m.name) || [];
+      const credModels = new Set();
+      // Get currently selected models for this key if editing (we don't have edit yet, so just show all)
+      container.innerHTML = modelNames.map(m => `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin:2px;background:var(--surface);border:1px solid var(--border)">
+        <input type="checkbox" name="models" value="${esc(m)}" checked>
+        <span>${esc(m)}</span>
+      </label>`).join('');
+    } catch (e) {
+      container.innerHTML = '<span style="color:var(--text-muted)">Unable to load models</span>';
+    }
+  }
+
+  // --- Client Key Model Checkboxes ---
+  async function renderClientKeyModelsCheckboxes() {
+    const container = document.getElementById('clientKeyModelsCheckboxes');
+    if (!container) return;
+    try {
+      const models = await api('/api/admin/providers/gemini/models', { method: 'POST', body: JSON.stringify({ key: '' }) });
+      const modelNames = models.models?.map(m => m.name) || [];
+      container.innerHTML = modelNames.map(m => `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin:2px;background:var(--surface);border:1px solid var(--border)">
+        <input type="checkbox" name="models" value="${esc(m)}">
+        <span>${esc(m)}</span>
+      </label>`).join('');
+    } catch (e) {
+      container.innerHTML = '<span style="color:var(--text-muted)">Unable to load models</span>';
+    }
+  }
+
+  // --- Export Logs ---
+  async function exportLogs(format) {
+    try {
+      const params = new URLSearchParams();
+      const model = document.getElementById('logModel').value;
+      const provider = document.getElementById('logProvider').value;
+      const outcome = document.getElementById('logResult').value;
+      const q = document.getElementById('logSearch').value.trim();
+      if (model) params.set('model', model);
+      if (provider) params.set('provider', provider);
+      if (outcome) params.set('outcome', outcome);
+      if (q) params.set('q', q);
+      params.set('limit', '10000');
+      params.set('offset', '0');
+      const d = await api('/api/admin/logs?' + params.toString());
+      if (format === 'json') {
+        const blob = new Blob([JSON.stringify(d.logs, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, `request-logs-${Date.now()}.json`);
+      } else {
+        const headers = ['Time','Model','Provider','Key','Attempt','Result'];
+        const rows = d.logs.map(l => [
+          new Date(Number(l.created_at)).toISOString(),
+          l.model,
+          l.provider || 'gemini',
+          l.key_label || '—',
+          l.attempt || 0,
+          `${l.outcome} (${l.status || '—'})${l.error_code ? ' ' + l.error_code : ''}`
+        ]);
+        const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        downloadBlob(blob, `request-logs-${Date.now()}.csv`);
+      }
+    } catch (e) { alert('Export failed: ' + e.message); }
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // --- Aliases ---
+  async function loadAliases() {
+    try {
+      const aliases = await api('/api/admin/aliases');
+      renderAliases(aliases);
+      // Also populate alias target model dropdown
+      const models = await api('/api/admin/state');
+      const select = document.getElementById('aliasTargetModel');
+      if (select && models.models) {
+        select.innerHTML = '<option value="">Select a model...</option>' + models.models.map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join('');
+      }
+    } catch (e) { console.error(e); }
+  }
+
+  function renderAliases(aliases) {
+    const tbody = document.getElementById('aliasesTbody');
+    if (!aliases || !aliases.length) {
+      tbody.innerHTML = '<tr><td colspan="3" class="empty-notice">No aliases configured.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = aliases.map(a => `<tr>
+      <td><code style="font-family:'JetBrains Mono',monospace">${esc(a.alias)}</code></td>
+      <td><strong>${esc(a.target_model)}</strong></td>
+      <td><button class="btn-tbl btn-tbl-danger" onclick="deleteAlias('${esc(a.alias)}')">Delete</button></td>
+    </tr>`).join('');
+  }
+
+  document.getElementById('aliasForm').onsubmit = async (event) => {
+    event.preventDefault();
+    try {
+      const form = new FormData(event.target);
+      await api('/api/admin/aliases', { method: 'POST', body: JSON.stringify({ alias: form.get('alias'), target_model: form.get('target_model') }) });
+      event.target.reset();
+      loadAliases();
+    } catch (err) { alert(err.message); }
+  };
+
+  async function deleteAlias(alias) {
+    if (!confirm(`Delete alias "${alias}"?`)) return;
+    try {
+      await api('/api/admin/aliases/' + alias, { method: 'DELETE' });
+      loadAliases();
+    } catch (err) { alert(err.message); }
+  }
+
+  // --- Provider Key Model Checkboxes ---
+  async function renderKeyModelsCheckboxes() {
+    const container = document.getElementById('keyModelsCheckboxes');
+    if (!container) return;
+    try {
+      const models = await api('/api/admin/providers/gemini/models', { method: 'POST', body: JSON.stringify({ key: '' }) });
+      const modelNames = models.models?.map(m => m.name) || [];
+      container.innerHTML = modelNames.map(m => `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin:2px;background:var(--surface);border:1px solid var(--border)">
+        <input type="checkbox" name="models" value="${esc(m)}" checked>
+        <span>${esc(m)}</span>
+      </label>`).join('');
+    } catch (e) {
+      container.innerHTML = '<span style="color:var(--text-muted)">Unable to load models</span>';
+    }
+  }
+
+  // --- Client Key Model Checkboxes ---
+  async function renderClientKeyModelsCheckboxes() {
+    const container = document.getElementById('clientKeyModelsCheckboxes');
+    if (!container) return;
+    try {
+      const models = await api('/api/admin/providers/gemini/models', { method: 'POST', body: JSON.stringify({ key: '' }) });
+      const modelNames = models.models?.map(m => m.name) || [];
+      container.innerHTML = modelNames.map(m => `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin:2px;background:var(--surface);border:1px solid var(--border)">
+        <input type="checkbox" name="models" value="${esc(m)}">
+        <span>${esc(m)}</span>
+      </label>`).join('');
+    } catch (e) {
+      container.innerHTML = '<span style="color:var(--text-muted)">Unable to load models</span>';
+    }
+  }
+
+  // --- Export Logs ---
+  async function exportLogs(format) {
+    try {
+      const params = new URLSearchParams();
+      const model = document.getElementById('logModel').value;
+      const provider = document.getElementById('logProvider').value;
+      const outcome = document.getElementById('logResult').value;
+      const q = document.getElementById('logSearch').value.trim();
+      if (model) params.set('model', model);
+      if (provider) params.set('provider', provider);
+      if (outcome) params.set('outcome', outcome);
+      if (q) params.set('q', q);
+      params.set('limit', '10000');
+      params.set('offset', '0');
+      const d = await api('/api/admin/logs?' + params.toString());
+      if (format === 'json') {
+        const blob = new Blob([JSON.stringify(d.logs, null, 2)], { type: 'application/json' });
+        downloadBlob(blob, `request-logs-${Date.now()}.json`);
+      } else {
+        const headers = ['Time','Model','Provider','Key','Attempt','Result'];
+        const rows = d.logs.map(l => [
+          new Date(Number(l.created_at)).toISOString(),
+          l.model,
+          l.provider || 'gemini',
+          l.key_label || '—',
+          l.attempt || 0,
+          `${l.outcome} (${l.status || '—'})${l.error_code ? ' ' + l.error_code : ''}`
+        ]);
+        const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(','))].join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        downloadBlob(blob, `request-logs-${Date.now()}.csv`);
+      }
+    } catch (e) { alert('Export failed: ' + e.message); }
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function showPanel(name, tabEl, updateHash = true) {
-    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'logs', 'howto'];
+    const validTabs = ['overview', 'client-keys', 'gemini-keys', 'model-aliases', 'logs', 'howto'];
     if (!validTabs.includes(name)) name = 'overview';
 
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -1241,6 +1561,9 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       history.replaceState(null, '', '#' + name);
     }
     if (name === 'logs') loadLogs();
+    if (name === 'gemini-keys') renderKeyModelsCheckboxes();
+    if (name === 'client-keys') renderClientKeyModelsCheckboxes();
+    if (name === 'model-aliases') loadAliases();
   }
 
   function initActiveTab() {
@@ -1283,7 +1606,8 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     event.preventDefault();
     try {
       const form = new FormData(event.target);
-      const data = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: form.get('label') }) });
+      const models = Array.from(form.getAll('models')).filter(Boolean);
+      const data = await api('/api/admin/client-keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), models }) });
       showClientKey(data.clientApiKey);
       event.target.reset();
       showPanel('client-keys');
@@ -1295,16 +1619,47 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     event.preventDefault();
     try {
       const form = new FormData(event.target);
-      await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: form.get('key') }) });
+      const models = Array.from(form.getAll('models')).filter(Boolean);
+      await api('/api/admin/keys', { method: 'POST', body: JSON.stringify({ label: form.get('label'), key: form.get('key'), provider: form.get('provider'), base_url: form.get('base_url'), models }) });
       event.target.reset();
       showPanel('gemini-keys');
       load();
     } catch (err) { alert(err.message); }
   };
 
-  async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
-  async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
-  async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
+  async function editKeyModels(keyId, currentModels) {
+    try {
+      const models = await api('/api/admin/providers/gemini/models', { method: 'POST', body: JSON.stringify({ key: '' }) });
+      const modelNames = models.models?.map(m => m.name) || [];
+      const html = modelNames.map(m => `<label style="display:flex;align-items:center;gap:8px;padding:4px 8px;margin:2px;background:var(--surface);border:1px solid var(--border)">
+        <input type="checkbox" name="models" value="${esc(m)}" ${currentModels?.includes(m) ? 'checked' : ''}>
+        <span>${esc(m)}</span>
+      </label>`).join('');
+      // Create a simple modal
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.style.display = 'flex';
+      modal.innerHTML = `<div class="modal-card" style="max-width:400px">
+        <div class="modal-head"><strong>Manage Models for Key</strong><button class="modal-x" onclick="this.closest('.modal-overlay').remove()">&times;</button></div>
+        <div class="modal-body" style="max-height:300px;overflow-y:auto;text-align:left">${html}</div>
+        <div class="modal-head" style="justify-content:flex-end;padding-top:0">
+          <button class="btn-tbl" onclick="this.closest('.modal-overlay').remove()">Cancel</button>
+          <button class="btn-primary" onclick="saveKeyModels(this, ${keyId})">Save</button>
+        </div>`;
+      document.body.appendChild(modal);
+      window._editKeyModelsKeyId = keyId;
+      window._editKeyModelsResolver = null;
+      return new Promise(resolve => { window._editKeyModelsResolver = resolve; });
+    } catch (e) { alert(e.message); }
+  }
+
+  function saveKeyModels(btn, keyId) {
+    const modal = btn.closest('.modal-overlay');
+    const selected = Array.from(modal.querySelectorAll('input[name="models"]:checked')).map(cb => cb.value);
+    api('/api/admin/keys/' + keyId + '/models', { method: 'POST', body: JSON.stringify({ models: selected }) })
+      .then(() => { modal.remove(); load(); })
+      .catch(e => alert(e.message));
+  }
 
   initActiveTab();
 
