@@ -142,7 +142,7 @@ function localKeyIsValid(request) {
     query.get("key") || "";
   if (!supplied) return false;
   const hash = hashValue(supplied);
-  return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ? AND enabled = 1").get(hash));
+  return Boolean(db.prepare("SELECT id FROM client_keys WHERE key_hash = ?").get(hash));
 }
 
 function dashboardSessionValid(request) {
@@ -242,8 +242,8 @@ function modelNameFromPath(path) {
   try { return decodeURIComponent(match[1]); } catch { return null; }
 }
 
-function enabledKeys() {
-  return db.prepare("SELECT id, api_key FROM api_keys WHERE enabled = 1 ORDER BY id").all();
+function poolKeys() {
+  return db.prepare("SELECT id, api_key FROM api_keys ORDER BY id").all();
 }
 
 function setMeta(key, value) {
@@ -279,7 +279,7 @@ function usageStats() {
            COALESCE(s.cooldown_until, 0) AS cooldown_until,
            COALESCE(s.cooldown_reason, '') AS cooldown_reason
     FROM (SELECT name FROM models UNION SELECT DISTINCT model AS name FROM requests UNION SELECT DISTINCT model AS name FROM model_key_state) m
-    CROSS JOIN (SELECT id, label, api_key FROM api_keys WHERE enabled = 1) k
+    CROSS JOIN (SELECT id, label, api_key FROM api_keys) k
     LEFT JOIN requests r ON r.model = m.name AND r.key_id = k.id
       AND r.status >= 200 AND r.status < 300 AND r.created_at >= ?
     LEFT JOIN model_key_state s ON s.model = m.name AND s.key_id = k.id
@@ -437,8 +437,8 @@ function refreshModelsOnce(request) {
 }
 
 async function refreshModels(request) {
-  const keys = enabledKeys();
-  log("info", "Models", `sync started: racing ${keys.length} enabled key(s)`);
+  const keys = poolKeys();
+  log("info", "Models", `sync started: racing ${keys.length} key(s)`);
   const attempts = keys.map((key) => (async () => {
     const result = await forwardToGemini(request, Buffer.alloc(0), key.api_key);
     if (result.status < 200 || result.status >= 300) {
@@ -484,7 +484,7 @@ async function refreshModels(request) {
     }
   }
   log("error", "Models", `sync failed on all ${keys.length} key(s)`);
-  return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No enabled Gemini API keys" })) };
+  return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No Gemini API keys" })) };
 }
 
 function syntheticModelsRequest() {
@@ -536,14 +536,14 @@ async function handleGemini(request, response, model) {
     .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
   for (const key of everyKey) {
     const cd = keyCooldown(model, key.id);
-    key.rank = !key.enabled ? 2 : cd ? 1 : 0;
+    key.rank = cd ? 1 : 0;
     key.until = cd ? cd.cooldown_until : 0;
     key.reason = cd ? cd.cooldown_reason : null;
   }
   everyKey.sort((left, right) => left.rank - right.rank || left.until - right.until || (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
   const readyCount = everyKey.filter((key) => key.rank === 0).length;
   dbg("Gemini", `${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down or disabled`);
-  dbg("Gemini", `${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : key.rank === 2 ? ", disabled" : ""})`).join(" -> ")}`);
+  dbg("Gemini", `${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : ""})`).join(" -> ")}`);
   let lastResult;
   let attempt = 0;
   const loopStartedAt = Date.now();
@@ -561,8 +561,6 @@ async function handleGemini(request, response, model) {
     }
     if (selected.rank === 1) {
       log("warn", "Gemini", `${model}: no ready key left in cap; using cooling-down key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
-    } else if (selected.rank === 2) {
-      log("warn", "Gemini", `${model}: no ready or cooling-down key left in cap; using DISABLED key #${selected.id} as last resort`);
     }
     log("info", "Gemini", `${model}: attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
     try {
@@ -686,8 +684,8 @@ async function handleRequest(request, response) {
     return json(response, 403, { error: "Invalid CSRF token" });
   }
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
-    const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
-    const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
+    const keys = db.prepare("SELECT id,label,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
+    const clientKeys = db.prepare("SELECT id,label,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
     const models = db.prepare("SELECT name FROM models ORDER BY name").all();
     const cooldowns = db.prepare("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns });
@@ -710,7 +708,6 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
-  if (clientKeyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE client_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} ${body.enabled ? "enabled" : "disabled"}`); return json(response, 200, { ok: true }); }
   if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
@@ -720,7 +717,6 @@ async function handleRequest(request, response) {
     return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
-  if (keyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE api_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(keyMatch[1])); log("info", "Admin", `Gemini key #${keyMatch[1]} ${body.enabled ? "enabled" : "disabled"}`); return json(response, 200, { ok: true }); }
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
     const deleted = db.prepare("SELECT label FROM api_keys WHERE id=?").get(keyId);

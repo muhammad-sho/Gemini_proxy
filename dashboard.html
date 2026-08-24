@@ -492,7 +492,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
           </thead>
           <tbody id="clientKeysTbody"></tbody>
         </table>
@@ -522,7 +522,7 @@
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Label</th><th>Key Prefix</th><th>Status</th><th>Actions</th></tr>
+            <tr><th>Label</th><th>Key Prefix</th><th>Actions</th></tr>
           </thead>
           <tbody id="keysTbody"></tbody>
         </table>
@@ -617,7 +617,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <tbody>
             <tr><td><span class="status-tag tag-ready">200</span></td><td>Success — Google's answer is returned unchanged.</td></tr>
             <tr><td><span class="status-tag tag-off">401</span></td><td>The client key is missing or invalid. Check the Client Keys tab.</td></tr>
-            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No Gemini API keys are configured at all. Even cooled-down or disabled keys are tried first as a last resort.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No Gemini API keys are configured at all. Even cooled-down keys are tried first as a last resort.</td></tr>
             <tr><td><span class="status-tag tag-cooldown">502</span></td><td>Gemini did not respond on any attempted key (network/timeout). Google's own error responses are relayed to you exactly as received.</td></tr>
           </tbody>
         </table>
@@ -747,27 +747,23 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
       ? ck.map(k => `<tr>
           <td><strong>${esc(k.label)}</strong></td>
           <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
-          <td>${k.enabled ? '<span class="status-tag tag-ready">Active</span>' : '<span class="status-tag tag-off">Disabled</span>'}</td>
           <td>
             ${k.value ? `<button class="btn-tbl" onclick="copyText('${esc(k.value)}',this)">Copy Key</button>` : ''}
-            <button class="btn-tbl" onclick="toggleClientKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
             <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
           </td>
         </tr>`).join('')
-      : '<tr><td colspan="4" class="empty-notice">No client keys configured.</td></tr>';
+      : '<tr><td colspan="3" class="empty-notice">No client keys configured.</td></tr>';
 
     const gk = data.keys || [];
     document.getElementById('keysTbody').innerHTML = gk.length
       ? gk.map(k => `<tr>
           <td><strong>${esc(k.label)}</strong></td>
           <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
-          <td>${k.enabled ? '<span class="status-tag tag-ready">Active</span>' : '<span class="status-tag tag-off">Disabled</span>'}</td>
           <td>
-            <button class="btn-tbl" onclick="toggleKey(${k.id},${!k.enabled})">${k.enabled ? 'Disable' : 'Enable'}</button>
             <button class="btn-tbl btn-tbl-danger" onclick="deleteKey(${k.id})">Delete</button>
           </td>
         </tr>`).join('')
-      : '<tr><td colspan="4" class="empty-notice">No Gemini API keys configured.</td></tr>';
+      : '<tr><td colspan="3" class="empty-notice">No Gemini API keys configured.</td></tr>';
 
     const us = data.usage || [];
 
@@ -932,9 +928,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     } catch (err) { alert(err.message); }
   };
 
-  async function toggleClientKey(id, enabled) { await api('/api/admin/client-keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) }); load(); }
   async function deleteClientKey(id) { if (confirm('Delete this client key?')) { await api('/api/admin/client-keys/' + id, { method: 'DELETE' }); load(); } }
-  async function toggleKey(id, enabled) { await api('/api/admin/keys/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) }); load(); }
   async function deleteKey(id) { if (confirm('Delete this Gemini API key?')) { await api('/api/admin/keys/' + id, { method: 'DELETE' }); load(); } }
   async function logout() { await fetch('/logout', { method: 'POST', headers: { 'X-CSRF-Token': csrf() } }); location.href = '/'; }
 

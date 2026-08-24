@@ -5,7 +5,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 ## Features
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
-* **Best-key selection, best-to-worst** — ready keys first (least-used rotation per model); if none are ready, the least-bad key is tried anyway: soonest-expiring cooldown first, disabled keys as the very last resort
+* **Best-key selection, best-to-worst** — ready keys first (least-used rotation per model); if none are ready, the least-bad key is tried anyway, starting with the soonest-expiring cooldown
 * Automatic retry on another key when one fails
 * Automatic cooldown when a key is overloaded or out of daily quota
 * Google's responses — successes and errors alike — are relayed to the client exactly as received
@@ -127,7 +127,7 @@ Open `http://YOUR_SERVER_IP:18765` and sign in. The dashboard has four tabs:
 | --- | --- |
 | **Overview & Usage** | Totals (client keys, Gemini keys, models, requests today), reset schedule, model sync time, plus the per model/key usage table with cooldown states |
 | **Client Keys** | Generate and manage the API keys your applications use |
-| **Gemini API Keys** | Add, enable/disable, and remove your Google Gemini keys |
+| **Gemini API Keys** | Add and remove your Google Gemini keys |
 | **How to Use** | Copy-paste API examples for calling the proxy |
 
 Add your Google keys through the dashboard instead of pasting them directly
@@ -339,11 +339,11 @@ HTTPS reverse proxy or keep it on a trusted network / VPN.
 Check that the request contains the `x-proxy-api-key` header and that the
 value matches a client key generated in the dashboard (**Client Keys** tab).
 
-## 503 No enabled Gemini API keys
+## 503 No Gemini API keys
 
-No usable Google keys are configured or all matching keys are cooling down.
-Add keys in the **Gemini API Keys** tab and check the Overview & Usage table
-for cooldown states.
+No Google keys are configured at all. Add at least one key in the
+**Gemini API Keys** tab — cooled-down keys are still tried automatically,
+so this only appears with an empty pool.
 
 ## Rate Limit Errors
 
