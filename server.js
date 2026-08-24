@@ -40,7 +40,6 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
     api_key TEXT NOT NULL,
-    enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS client_keys (
@@ -49,7 +48,6 @@ db.exec(`
     key_hash TEXT NOT NULL UNIQUE,
     key_prefix TEXT NOT NULL,
     key_text TEXT,
-    enabled INTEGER NOT NULL DEFAULT 1,
     created_at INTEGER NOT NULL
   );
   CREATE TABLE IF NOT EXISTS admin_users (
@@ -104,6 +102,8 @@ db.exec(`
 
 try { db.exec("ALTER TABLE model_key_state ADD COLUMN cooldown_reason TEXT NOT NULL DEFAULT ''"); } catch {}
 try { db.exec("ALTER TABLE client_keys ADD COLUMN key_text TEXT"); } catch {}
+try { db.exec("ALTER TABLE api_keys DROP COLUMN enabled"); } catch {}
+try { db.exec("ALTER TABLE client_keys DROP COLUMN enabled"); } catch {}
 try { db.exec("ALTER TABLE request_logs ADD COLUMN trace_id TEXT"); } catch {}
 try { db.exec("ALTER TABLE request_logs ADD COLUMN events TEXT"); } catch {}
 
@@ -619,7 +619,7 @@ async function handleGemini(request, response, model) {
   }
   everyKey.sort((left, right) => left.rank - right.rank || left.until - right.until || (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
   const readyCount = everyKey.filter((key) => key.rank === 0).length;
-  dbg("Gemini", `[${short}] ${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down or disabled`);
+  dbg("Gemini", `[${short}] ${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down`);
   dbg("Gemini", `[${short}] ${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : ""})`).join(" -> ")}`);
   mark("pool", `${everyKey.length} Gemini key(s); ready now: ${readyCount}; attempt cap ${KEY_FALLBACK_ATTEMPTS}`);
   mark("order", `preference ${everyKey.map((key) => `#${key.id}${key.rank === 1 ? ` (cooling: ${key.reason})` : ""}`).join(" > ")}`);
