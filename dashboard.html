@@ -411,7 +411,8 @@
     .usage-table td.cell-warn { background: var(--amber);   color: #26160a; }
     .usage-table td.cell-hot  { background: var(--rose);    color: #ffffff; }
     .usage-table td.cell-none { background: var(--surface-alt); color: var(--text-dim); opacity: .6; }
-    .usage-table td.xfocus { filter: brightness(1.06); }
+    .usage-table tbody tr:hover th { color: var(--border-strong); }
+    .usage-table tbody tr:hover td, .usage-table td.xfocus { filter: brightness(1.06); }
     .usage-table td.num:hover { outline: 2px solid var(--border-strong); outline-offset: -2px; position: relative; }
     #keyTip {
       display: none;
@@ -460,7 +461,7 @@
       padding: 20px;
     }
     .modal-card {
-      background: var(--panel);
+      background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 14px;
       width: 100%;
