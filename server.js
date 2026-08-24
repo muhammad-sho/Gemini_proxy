@@ -191,6 +191,10 @@ function clientAddress(request) {
   return request.socket.remoteAddress || "unknown";
 }
 
+function requestPath(request) {
+  try { return new URL(request.url, "http://localhost").pathname; } catch { return request.url.split("?")[0]; }
+}
+
 function pruneLoginAttempts() {
   const cutoff = Date.now() - 15 * 60 * 1000;
   for (const [address, attempts] of loginAttempts) {
@@ -333,7 +337,7 @@ function recordLog(entry) {
   try {
     db.prepare("INSERT INTO request_logs (created_at,model,key_id,key_label,key_masked,status,outcome,error_code,attempt,request_body,response_body) VALUES (?,?,?,?,?,?,?,?,?,?,?)")
       .run(Date.now(), entry.model, entry.keyId ?? null, entry.keyLabel ?? null, entry.keyMasked ?? null,
-        entry.status ?? null, entry.outcome, entry.errorCode ?? null, entry.attempt ?? 0,
+        entry.status ?? null, entry.outcome, entry.errorCode ? maskSecrets(String(entry.errorCode)) : null, entry.attempt ?? 0,
         entry.requestBody === undefined ? null : maskSecrets(clipBody(entry.requestBody)),
         entry.responseBody === undefined ? null : maskSecrets(clipBody(entry.responseBody)));
   } catch (error) {
@@ -393,7 +397,7 @@ function forwardToGemini(request, body, key, opts = {}) {
       timeout: Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS)),
       headers,
     }, (response) => {
-      dbg("Upstream", `key ${maskKey(key)} -> ${request.method} ${upstreamUrl.pathname}${upstreamUrl.search} started (timeout ${Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS))}ms)`);
+      dbg("Upstream", `key ${maskKey(key)} -> ${request.method} ${upstreamUrl.pathname} started (timeout ${Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS))}ms)`);
       const chunks = [];
       let bytes = 0;
       let tooLarge = false;
@@ -570,7 +574,7 @@ async function handleModelsList(request, response) {
 
 async function handleGemini(request, response, model) {
   if (!localKeyIsValid(request)) {
-    log("warn", "Auth", `rejected ${request.method} ${request.url}: invalid client key from ${clientAddress(request)}`);
+    log("warn", "Auth", `rejected ${request.method} ${requestPath(request)}: invalid client key from ${clientAddress(request)}`);
     recordLog({ model, status: 401, outcome: "rejected", errorCode: "INVALID_CLIENT_KEY" });
     return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
   }
@@ -748,7 +752,7 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
-    const clientKeys = db.prepare("SELECT id,label,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
+    const clientKeys = db.prepare("SELECT id,label,key_prefix AS masked FROM client_keys ORDER BY id").all();
     const models = db.prepare("SELECT name FROM models ORDER BY name").all();
     const cooldowns = db.prepare("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns });
@@ -821,13 +825,13 @@ const server = http.createServer((request, response) => {
   const startedAt = Date.now();
   const peer = clientAddress(request);
   response.on("finish", () => {
-    log("info", "HTTP", `${request.method} ${request.url} -> ${response.statusCode} (${Date.now() - startedAt}ms) from ${peer}`);
+    log("info", "HTTP", `${request.method} ${requestPath(request)} -> ${response.statusCode} (${Date.now() - startedAt}ms) from ${peer}`);
   });
   response.on("close", () => {
-    if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${request.url} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
+    if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${requestPath(request)} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
   });
   handleRequest(request, response).catch((error) => {
-    log("error", "HTTP", `handler failed for ${request.method} ${request.url}: ${error.stack || error.message}`);
+    log("error", "HTTP", `handler failed for ${request.method} ${requestPath(request)}: ${error.stack || error.message}`);
     if (!response.headersSent) json(response, error.status || 500, { error: "Internal server error" });
     else response.destroy();
   });

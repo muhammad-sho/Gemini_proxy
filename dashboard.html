@@ -532,6 +532,7 @@
     </div>
     <div class="section-box">
       <h2 class="section-title">Active Client Keys</h2>
+      <p class="section-desc">Full key values are shown exactly once, right after they are generated. Store them somewhere safe — they cannot be retrieved again.</p>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
@@ -826,7 +827,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <td><strong>${esc(k.label)}</strong></td>
           <td><code style="font-family:'JetBrains Mono',monospace">${esc(k.masked)}</code></td>
           <td>
-            ${k.value ? `<button class="btn-tbl" onclick="copyText('${esc(k.value)}',this)">Copy Key</button>` : ''}
             <button class="btn-tbl btn-tbl-danger" onclick="deleteClientKey(${k.id})">Delete</button>
           </td>
         </tr>`).join('')
