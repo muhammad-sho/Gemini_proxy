@@ -104,6 +104,8 @@ export const api = {
 
   createCredential: (input: { label: string; provider: string; apiKey: string; baseUrl?: string; allowedModels: string[] }) =>
     request<{ id: string }>("POST", "/api/admin/v1/provider-credentials", input),
+  updateCredential: (id: string, input: { label?: string; baseUrl?: string; allowedModels?: string[] }) =>
+    request<{ ok: true }>("PUT", `/api/admin/v1/provider-credentials/${id}`, input),
   deleteCredential: (id: string) => request<{ ok: true }>("DELETE", `/api/admin/v1/provider-credentials/${id}`),
 
   refreshModels: () => request<{ refreshed: number; errors: string[] }>("POST", "/api/admin/v1/models/refresh"),

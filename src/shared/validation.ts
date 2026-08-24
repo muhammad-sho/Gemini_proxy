@@ -65,3 +65,12 @@ export const providerCredentialCreateSchema = z.object({
 
 export type ClientKeyCreate = z.infer<typeof clientKeyCreateSchema>;
 export type ProviderCredentialCreate = z.infer<typeof providerCredentialCreateSchema>;
+
+export const providerCredentialUpdateSchema = z.object({
+  label: z.string().min(1).max(128).optional(),
+  baseUrl: z.string().url().optional(),
+  allowedModels: z.array(z.string()).optional(),
+  allowedGroups: z.array(z.string()).optional()
+});
+
+export type ProviderCredentialUpdate = z.infer<typeof providerCredentialUpdateSchema>;

@@ -30,6 +30,14 @@ export class ProviderCredentialRepository {
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   private stmtDelete = this.db.prepare("DELETE FROM provider_credentials WHERE id = ?");
+  private stmtUpdate = this.db.prepare(`
+    UPDATE provider_credentials
+    SET label = COALESCE(?, label),
+        base_url = COALESCE(?, base_url),
+        allowed_models = COALESCE(?, allowed_models),
+        allowed_groups = COALESCE(?, allowed_groups)
+    WHERE id = ? AND revoked_at IS NULL
+  `);
 
   constructor() {
     const config = getConfig();
@@ -124,6 +132,20 @@ export class ProviderCredentialRepository {
 
   delete(id: string): boolean {
     const result = this.stmtDelete.run(id);
+    return result.changes > 0;
+  }
+
+  update(
+    id: string,
+    fields: Partial<Pick<ProviderCredential, "label" | "base_url" | "allowed_models" | "allowed_groups">>
+  ): boolean {
+    const result = this.stmtUpdate.run(
+      fields.label ?? null,
+      fields.base_url ?? null,
+      fields.allowed_models ? JSON.stringify(fields.allowed_models) : null,
+      fields.allowed_groups ? JSON.stringify(fields.allowed_groups) : null,
+      id
+    );
     return result.changes > 0;
   }
 }

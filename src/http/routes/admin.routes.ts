@@ -3,7 +3,8 @@ import type { AppDeps } from "../server.js";
 import { requireAdmin } from "./auth.routes.js";
 import {
   clientKeyCreateSchema,
-  providerCredentialCreateSchema
+  providerCredentialCreateSchema,
+  providerCredentialUpdateSchema
 } from "../../shared/validation.js";
 
 function guard(deps: AppDeps, req: FastifyRequest): boolean {
@@ -93,6 +94,29 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       const { id } = req.params as { id: string };
       const ok = deps.providerCredentialRepo.delete(id);
       if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      return { ok: true };
+    });
+
+    app.put("/provider-credentials/:id", async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const parsed = providerCredentialUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
+      }
+      const existing = deps.providerCredentialRepo.findById(id);
+      if (!existing) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+
+      const updated = deps.providerCredentialRepo.update(id, {
+        label: parsed.data.label,
+        base_url: parsed.data.baseUrl,
+        allowed_models: parsed.data.allowedModels,
+        allowed_groups: parsed.data.allowedGroups
+      });
+      if (!updated) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+
+      // Re-fetch models since baseUrl or provider may have changed
+      void deps.modelCacheService.refresh(id).catch(() => { /* logged in service */ });
+
       return { ok: true };
     });
 

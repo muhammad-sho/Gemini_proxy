@@ -82,8 +82,74 @@ function AddCredentialModal({
   );
 }
 
+function EditCredentialModal({
+  credential,
+  models,
+  onClose,
+  onUpdated
+}: {
+  credential: AdminState["credentials"][0];
+  models: Array<{ id: string }>;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [label, setLabel] = useState(credential.label);
+  const [baseUrl, setBaseUrl] = useState(credential.baseUrl ?? "");
+  const [allowedModels, setAllowedModels] = useState<string[]>(credential.allowedModels ?? []);
+  const [busy, setBusy] = useState(false);
+  const { toast } = useApp();
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api.updateCredential(credential.id, {
+        label: label.trim() || undefined,
+        baseUrl: baseUrl.trim() || undefined,
+        allowedModels: allowedModels.length > 0 ? allowedModels : undefined
+      });
+      toast("info", "Provider credential updated");
+      onUpdated();
+      onClose();
+    } catch (err) {
+      toast("error", String((err as Error).message));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Edit provider API key" onClose={onClose}>
+      <form onSubmit={submit} className="form">
+        <label>
+          Label
+          <input value={label} onChange={e => setLabel(e.target.value)} required maxLength={128} autoFocus />
+        </label>
+        <label>
+          Base URL (optional)
+          <input
+            type="url"
+            placeholder={credential.provider === "gemini" ? "https://generativelanguage.googleapis.com" : "https://api.openai.com"}
+            value={baseUrl}
+            onChange={e => setBaseUrl(e.target.value)}
+          />
+        </label>
+        <p className="hint">Provider: <strong>{credential.provider}</strong></p>
+        <fieldset>
+          <legend>Allowed models (empty = all cached models)</legend>
+          <ModelPicker models={models} selected={allowedModels} onChange={setAllowedModels} />
+        </fieldset>
+        <button className="btn btn-primary" disabled={busy || !label.trim()}>
+          {busy ? "Saving…" : "Save changes"}
+        </button>
+      </form>
+    </Modal>
+  );
+}
+
 export function ProviderCredentialsPage({ state, reload }: { state: AdminState; reload: () => Promise<void> }) {
   const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<AdminState["credentials"][0] | null>(null);
   const { toast } = useApp();
 
   const remove = async (id: string) => {
@@ -120,6 +186,7 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
                 <td><code>{c.baseUrl ?? "default"}</code></td>
                 <td>{new Date(c.createdAt * 1000).toLocaleDateString()}</td>
                 <td>
+                  <button className="btn btn-ghost" onClick={() => setEditing(c)}>Edit</button>
                   <ConfirmButton prompt="Delete" onConfirm={() => remove(c.id)} />
                 </td>
               </tr>
@@ -133,6 +200,14 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
           models={state.models}
           onClose={() => setShowModal(false)}
           onCreated={() => { void reload(); }}
+        />
+      )}
+      {editing && (
+        <EditCredentialModal
+          credential={editing}
+          models={state.models}
+          onClose={() => setEditing(null)}
+          onUpdated={() => { void reload(); }}
         />
       )}
     </section>
