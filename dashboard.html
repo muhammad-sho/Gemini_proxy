@@ -617,7 +617,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <tbody>
             <tr><td><span class="status-tag tag-ready">200</span></td><td>Success — Google's answer is returned unchanged.</td></tr>
             <tr><td><span class="status-tag tag-off">401</span></td><td>The client key is missing or invalid. Check the Client Keys tab.</td></tr>
-            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No usable Gemini key right now — none configured or all are cooling down. The body includes <code>retryAfterSeconds</code>.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No Gemini API keys are configured at all. Even cooled-down or disabled keys are tried first as a last resort.</td></tr>
             <tr><td><span class="status-tag tag-cooldown">502</span></td><td>Gemini did not respond on any attempted key (network/timeout). Google's own error responses are relayed to you exactly as received.</td></tr>
           </tbody>
         </table>

@@ -5,9 +5,10 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 ## Features
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
-* **Least-used rotation per model** — each model independently uses the key with the fewest successful requests today
+* **Best-key selection, best-to-worst** — ready keys first (least-used rotation per model); if none are ready, the least-bad key is tried anyway: soonest-expiring cooldown first, disabled keys as the very last resort
 * Automatic retry on another key when one fails
 * Automatic cooldown when a key is overloaded or out of daily quota
+* Google's responses — successes and errors alike — are relayed to the client exactly as received
 * Per-key and per-model usage tracking in a web dashboard
 * Automatic model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
 * Web dashboard for managing keys, usage, and cooldown status

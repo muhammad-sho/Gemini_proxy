@@ -527,25 +527,27 @@ async function handleGemini(request, response, model) {
 
   let body;
   try { body = await readBody(request); } catch (error) { return json(response, error.status || 400, { error: error.message }); }
-  const allKeys = enabledKeys();
-  const cooledCount = allKeys.length ? allKeys.filter((key) => keyCooldown(model, key.id)).length : 0;
-  const keys = allKeys.filter((key) => !keyCooldown(model, key.id));
-  if (!keys.length) {
-    const soonest = db.prepare("SELECT MIN(cooldown_until) AS until FROM model_key_state WHERE model = ? AND cooldown_until > ?").get(model, Date.now())?.until || 0;
-    const retryAfterSeconds = soonest ? Math.max(1, Math.ceil((soonest - Date.now()) / 1000)) : null;
-    log("warn", "Gemini", `${model}: request rejected, no available keys (${allKeys.length} enabled, ${cooledCount} cooling down${retryAfterSeconds ? `, next free in ~${retryAfterSeconds}s` : ""})`);
-    return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "All enabled Gemini API keys are cooling down or disabled for this model" }, retryAfterSeconds });
+  const everyKey = db.prepare("SELECT * FROM api_keys ORDER BY id").all();
+  if (!everyKey.length) {
+    log("warn", "Gemini", `${model}: request rejected, no Gemini API keys configured`);
+    return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "No Gemini API keys are configured" } });
   }
-  dbg("Gemini", `${model}: ${keys.length} candidate key(s), ${cooledCount} skipped for cooldown`);
-
   const usage = db.prepare("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
     .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
-  keys.sort((left, right) => (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
-  dbg("Gemini", `${model}: rotation order ${keys.map((key) => `#${key.id}(${maskKey(key.api_key)}, used ${usage.get(key.id) || 0})`).join(" -> ")}`);
+  for (const key of everyKey) {
+    const cd = keyCooldown(model, key.id);
+    key.rank = !key.enabled ? 2 : cd ? 1 : 0;
+    key.until = cd ? cd.cooldown_until : 0;
+    key.reason = cd ? cd.cooldown_reason : null;
+  }
+  everyKey.sort((left, right) => left.rank - right.rank || left.until - right.until || (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
+  const readyCount = everyKey.filter((key) => key.rank === 0).length;
+  dbg("Gemini", `${model}: ${readyCount} ready key(s), ${everyKey.length - readyCount} cooling down or disabled`);
+  dbg("Gemini", `${model}: preference order ${everyKey.map((key) => `#${key.id}(${maskKey(key.api_key)}${key.rank === 1 ? `, ${key.reason}, ~${Math.max(0, Math.ceil((key.until - Date.now()) / 1000))}s left` : key.rank === 2 ? ", disabled" : ""})`).join(" -> ")}`);
   let lastResult;
   let attempt = 0;
   const loopStartedAt = Date.now();
-  for (const selected of keys) {
+  for (const selected of everyKey) {
     if (attempt >= KEY_FALLBACK_ATTEMPTS) {
       log("info", "Gemini", `${model}: reached attempt cap (${KEY_FALLBACK_ATTEMPTS}); relaying last upstream response to client`);
       break;
@@ -557,7 +559,12 @@ async function handleGemini(request, response, model) {
       log("warn", "Gemini", `${model}: key loop budget ${KEY_LOOP_DEADLINE_MS}ms exhausted after ${attempt - 1} attempt(s); stopping`);
       break;
     }
-    log("info", "Gemini", `${model}: attempt ${attempt}/${Math.min(keys.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
+    if (selected.rank === 1) {
+      log("warn", "Gemini", `${model}: no ready key left in cap; using cooling-down key #${selected.id} (${selected.reason}, ~${Math.max(0, Math.ceil((selected.until - Date.now()) / 1000))}s left)`);
+    } else if (selected.rank === 2) {
+      log("warn", "Gemini", `${model}: no ready or cooling-down key left in cap; using DISABLED key #${selected.id} as last resort`);
+    }
+    log("info", "Gemini", `${model}: attempt ${attempt}/${Math.min(everyKey.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
     try {
       const result = await forwardToGemini(request, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response });
       lastResult = result;
