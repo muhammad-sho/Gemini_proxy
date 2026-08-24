@@ -266,6 +266,7 @@ dashboard setup. Add these to the `environment:` section of
 | `TRUST_PROXY` | unset | Set to `1` behind a reverse proxy to honor `X-Forwarded-For` |
 | `REQUEST_TIMEOUT_MS` | `120000` | Upstream request timeout |
 | `KEY_LOOP_DEADLINE_MS` | same as `REQUEST_TIMEOUT_MS` | Total time budget for trying keys one-by-one on a failed request before giving up |
+| `KEY_FALLBACK_ATTEMPTS` | `2` | How many different Gemini keys a single request may try before Google's last response is relayed to the client exactly as received |
 | `MAX_BODY_BYTES` | `10485760` | Maximum accepted request body size |
 | `MAX_RESPONSE_BYTES` | `52428800` | Maximum forwarded response size |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Hours before the cached model list refreshes in the background |

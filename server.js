@@ -10,6 +10,7 @@ const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS || 120000);
 const MAX_BODY_BYTES = Number(process.env.MAX_BODY_BYTES || 10 * 1024 * 1024);
 const MAX_RESPONSE_BYTES = Number(process.env.MAX_RESPONSE_BYTES || 50 * 1024 * 1024);
 const TRANSIENT_COOLDOWN_SECONDS = 60;
+const KEY_FALLBACK_ATTEMPTS = Math.max(1, Number(process.env.KEY_FALLBACK_ATTEMPTS || 2));
 const KEY_LOOP_DEADLINE_MS = Number(process.env.KEY_LOOP_DEADLINE_MS || 0) || REQUEST_TIMEOUT_MS;
 const MODELS_CACHE_TTL_MS = Number(process.env.MODELS_CACHE_TTL_HOURS || 24) * 60 * 60 * 1000;
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
@@ -376,7 +377,7 @@ function forwardToGemini(request, body, key, opts = {}) {
 function returnUpstream(response, result) {
   if (response.writableEnded || response.destroyed) return;
   const headers = {};
-  for (const name of ["content-type", "content-length"]) {
+  for (const name of ["content-type", "content-length", "retry-after"]) {
     if (result.headers[name]) headers[name] = result.headers[name];
   }
   response.writeHead(result.status, headers);
@@ -386,9 +387,10 @@ function returnUpstream(response, result) {
 function classifyUpstream(result) {
   let error = {};
   try { error = JSON.parse(result.body.toString("utf8")).error || {}; } catch {}
-  const text = `${error.status || ""} ${error.code || ""} ${error.message || ""}`.toLowerCase();
-  if (text.includes("api_key_invalid") || text.includes("invalid api key") || result.status === 401) return "invalid_key";
-  if (text.includes("quota_exceeded") || text.includes("daily quota") || text.includes("requests per day") || text.includes("per_day") || text.includes("rpd") || text.includes("current quota") || text.includes("resource_exhausted") || text.includes("quota failure")) return "daily_quota";
+  const message = `${error.status || ""} ${error.code || ""} ${error.message || ""}`.toLowerCase();
+  if (message.includes("api_key_invalid") || message.includes("invalid api key") || result.status === 401) return "invalid_key";
+  const detailsText = JSON.stringify(error.details || []).toLowerCase();
+  if (/\b(per[_ ]?day|daily|requests per day|\brpd\b)\b/.test(message) || detailsText.includes("perday") || detailsText.includes("per_day")) return "daily_quota";
   if ([408, 429, 500, 502, 503, 504].includes(result.status)) return "transient";
   return "permanent";
 }
@@ -529,8 +531,10 @@ async function handleGemini(request, response, model) {
   const cooledCount = allKeys.length ? allKeys.filter((key) => keyCooldown(model, key.id)).length : 0;
   const keys = allKeys.filter((key) => !keyCooldown(model, key.id));
   if (!keys.length) {
-    log("warn", "Gemini", `${model}: request rejected, no available keys (${allKeys.length} enabled, ${cooledCount} cooling down)`);
-    return json(response, 503, { error: "No enabled Gemini API keys" });
+    const soonest = db.prepare("SELECT MIN(cooldown_until) AS until FROM model_key_state WHERE model = ? AND cooldown_until > ?").get(model, Date.now())?.until || 0;
+    const retryAfterSeconds = soonest ? Math.max(1, Math.ceil((soonest - Date.now()) / 1000)) : null;
+    log("warn", "Gemini", `${model}: request rejected, no available keys (${allKeys.length} enabled, ${cooledCount} cooling down${retryAfterSeconds ? `, next free in ~${retryAfterSeconds}s` : ""})`);
+    return json(response, 503, { error: { code: 503, status: "UNAVAILABLE", message: "All enabled Gemini API keys are cooling down or disabled for this model" }, retryAfterSeconds });
   }
   dbg("Gemini", `${model}: ${keys.length} candidate key(s), ${cooledCount} skipped for cooldown`);
 
@@ -542,6 +546,10 @@ async function handleGemini(request, response, model) {
   let attempt = 0;
   const loopStartedAt = Date.now();
   for (const selected of keys) {
+    if (attempt >= KEY_FALLBACK_ATTEMPTS) {
+      log("info", "Gemini", `${model}: reached attempt cap (${KEY_FALLBACK_ATTEMPTS}); relaying last upstream response to client`);
+      break;
+    }
     if (response.writableEnded || response.destroyed) return;
     attempt += 1;
     const elapsed = Date.now() - loopStartedAt;
@@ -549,7 +557,7 @@ async function handleGemini(request, response, model) {
       log("warn", "Gemini", `${model}: key loop budget ${KEY_LOOP_DEADLINE_MS}ms exhausted after ${attempt - 1} attempt(s); stopping`);
       break;
     }
-    log("info", "Gemini", `${model}: attempt ${attempt}/${keys.length} using key #${selected.id} ${maskKey(selected.api_key)}`);
+    log("info", "Gemini", `${model}: attempt ${attempt}/${Math.min(keys.length, KEY_FALLBACK_ATTEMPTS)} using key #${selected.id} ${maskKey(selected.api_key)}`);
     try {
       const result = await forwardToGemini(request, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response });
       lastResult = result;
@@ -573,11 +581,11 @@ async function handleGemini(request, response, model) {
     }
   }
   if (lastResult) {
-    log("info", "Gemini", `${model}: all ${attempt} attempt(s) exhausted; returning last upstream status ${lastResult.status}`);
+    log("info", "Gemini", `${model}: relaying Google's response as-is after ${attempt} attempt(s): status ${lastResult.status}`);
     return returnUpstream(response, lastResult);
   }
-  log("error", "Gemini", `${model}: all ${attempt} attempt(s) failed without an upstream response`);
-  return json(response, 502, { error: "All Gemini API keys failed" });
+  log("error", "Gemini", `${model}: ${attempt} attempt(s) failed without any upstream response`);
+  return json(response, 502, { error: { code: 502, status: "BAD_GATEWAY", message: "Gemini did not respond on any attempted key" } });
 }
 
 const dashboard = fs.readFileSync("dashboard.html", "utf8");
@@ -674,7 +682,13 @@ async function handleRequest(request, response) {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
     const models = db.prepare("SELECT name FROM models ORDER BY name").all();
-    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models });
+    const cooldowns = db.prepare("SELECT s.model, s.key_id AS keyId, k.label, substr(k.api_key,1,6)||'...' AS masked, s.cooldown_until AS until, s.cooldown_reason AS reason FROM model_key_state s JOIN api_keys k ON k.id = s.key_id WHERE s.cooldown_until > ? ORDER BY s.cooldown_until").all(Date.now());
+    return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models, cooldowns });
+  }
+  if (url.pathname === "/api/admin/cooldowns/clear" && request.method === "POST") {
+    const cleared = db.prepare("DELETE FROM model_key_state").run().changes;
+    log("info", "Admin", `cleared all model/key cooldowns (${cleared} row(s))`);
+    return json(response, 200, { ok: true, cleared });
   }
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
     log("info", "Admin", `manual model refresh requested`);

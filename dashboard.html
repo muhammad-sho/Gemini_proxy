@@ -458,6 +458,19 @@
         </table>
       </div>
     </div>
+    <div class="section-box">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+        <h2 class="section-title" style="margin:0">Active Cooldowns</h2>
+        <button class="btn-tbl" id="clearCooldownsBtn" onclick="clearCooldowns()">Clear All Cooldowns</button>
+      </div>
+      <p class="section-desc">Keys currently benched per model, with the reason and time left. Rate-limit and transient errors recover in about a minute; daily-limit errors wait for the Pacific midnight reset.</p>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Model</th><th>Key</th><th>Reason</th><th>Cooling Until</th><th>Remaining</th></tr></thead>
+          <tbody id="cooldownTbody"><tr><td colspan="5" class="empty-notice">No active cooldowns — all keys ready.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- Client Keys Panel -->
@@ -604,8 +617,8 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <tbody>
             <tr><td><span class="status-tag tag-ready">200</span></td><td>Success — Google's answer is returned unchanged.</td></tr>
             <tr><td><span class="status-tag tag-off">401</span></td><td>The client key is missing or invalid. Check the Client Keys tab.</td></tr>
-            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No usable Gemini key right now — none configured or all are cooling down.</td></tr>
-            <tr><td><span class="status-tag tag-cooldown">502</span></td><td>Every configured Gemini key failed for this request. Check cooldowns on the Overview tab.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">503</span></td><td>No usable Gemini key right now — none configured or all are cooling down. The body includes <code>retryAfterSeconds</code>.</td></tr>
+            <tr><td><span class="status-tag tag-cooldown">502</span></td><td>Gemini did not respond on any attempted key (network/timeout). Google's own error responses are relayed to you exactly as received.</td></tr>
           </tbody>
         </table>
       </div>
@@ -776,6 +789,7 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     if (!us.length) {
       document.getElementById('usageThead').innerHTML = '';
       document.getElementById('usageTbody').innerHTML = '<tr><td colspan="2" class="empty-notice">No requests recorded in the current day window.</td></tr>';
+      renderCooldowns(data.cooldowns || []);
       return;
     }
 
@@ -793,6 +807,52 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
 
     document.getElementById('usageThead').innerHTML = '<tr>' + headerHtml + '</tr>';
     document.getElementById('usageTbody').innerHTML = rowsHtml;
+    renderCooldowns(data.cooldowns || []);
+  }
+
+  const COOLDOWN_REASONS = {
+    daily_quota: 'Daily limit reached',
+    invalid_key: 'Invalid key',
+    high_demand: 'Rate limited / high demand',
+    upstream_error: 'Upstream error'
+  };
+
+  function fmtRemaining(until) {
+    let s = Math.max(0, Math.ceil((Number(until) - Date.now()) / 1000));
+    const h = Math.floor(s / 3600); s %= 3600;
+    const m = Math.floor(s / 60);
+    return h ? `${h}h ${m}m` : m ? `${m}m ${s % 60}s` : `${s}s`;
+  }
+
+  function renderCooldowns(list) {
+    const tbody = document.getElementById('cooldownTbody');
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-notice">No active cooldowns — all keys ready.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = list.map(c => {
+      const until = Number(c.until);
+      return `<tr>
+        <td><strong>${esc(c.model)}</strong></td>
+        <td><code style="font-family:'JetBrains Mono',monospace">${esc(c.label)} (${esc(c.masked)})</code></td>
+        <td><span class="status-tag tag-cooldown">${esc(COOLDOWN_REASONS[c.reason] || c.reason || 'Unknown')}</span></td>
+        <td>${new Date(until).toLocaleString()}</td>
+        <td data-until="${until}">${fmtRemaining(until)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  setInterval(() => {
+    document.querySelectorAll('#cooldownTbody td[data-until]').forEach(td => {
+      td.textContent = fmtRemaining(Number(td.dataset.until));
+    });
+  }, 1000);
+
+  async function clearCooldowns() {
+    try {
+      await api('/api/admin/cooldowns/clear', { method: 'POST' });
+      load();
+    } catch {}
   }
 
   function showPanel(name, tabEl, updateHash = true) {
