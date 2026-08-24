@@ -1647,9 +1647,6 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
           <button class="btn-primary" onclick="saveKeyModels(this, ${keyId})">Save</button>
         </div>`;
       document.body.appendChild(modal);
-      window._editKeyModelsKeyId = keyId;
-      window._editKeyModelsResolver = null;
-      return new Promise(resolve => { window._editKeyModelsResolver = resolve; });
     } catch (e) { alert(e.message); }
   }
 
@@ -1659,6 +1656,22 @@ print(data["candidates"][0]["content"]["parts"][0]["text"])</pre>
     api('/api/admin/keys/' + keyId + '/models', { method: 'POST', body: JSON.stringify({ models: selected }) })
       .then(() => { modal.remove(); load(); })
       .catch(e => alert(e.message));
+  }
+
+  async function deleteKey(id) {
+    if (!confirm('Delete this provider API key?')) return;
+    try {
+      await api('/api/admin/keys/' + id, { method: 'DELETE' });
+      load();
+    } catch (err) { alert(err.message); }
+  }
+
+  async function deleteClientKey(id) {
+    if (!confirm('Delete this client key?')) return;
+    try {
+      await api('/api/admin/client-keys/' + id, { method: 'DELETE' });
+      load();
+    } catch (err) { alert(err.message); }
   }
 
   initActiveTab();
