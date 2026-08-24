@@ -19,6 +19,18 @@ const loginFailures = [];
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
 const SETUP_TOKEN = process.env.SETUP_TOKEN || crypto.randomBytes(32).toString("base64url");
 
+const LOG_LEVELS = { debug: 10, info: 20, warn: 30, error: 40 };
+const LOG_LEVEL = (process.env.LOG_LEVEL || "info").toLowerCase();
+function log(level, category, message) {
+  const levelValue = LOG_LEVELS[level] || LOG_LEVELS.info;
+  if (levelValue < (LOG_LEVELS[LOG_LEVEL] || LOG_LEVELS.info)) return;
+  const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
+  if (levelValue >= LOG_LEVELS.warn) console.error(line);
+  else console.log(line);
+}
+const dbg = (category, message) => log("debug", category, message);
+const maskKey = (key) => `${String(key || "").slice(0, 6)}...`;
+
 const db = new DatabaseSync(DB_PATH);
 try { fs.chmodSync(DB_PATH, 0o600); } catch {}
 db.exec(`
@@ -185,7 +197,7 @@ function rateLimited(address) {
   if (loginFailures.length >= 1000) {
     if (now - globalCapLoggedAt > 60_000) {
       globalCapLoggedAt = now;
-      console.warn(`[Auth] global failure cap reached (${loginFailures.length} failures in window); rejecting logins from all addresses`);
+      log("warn", "Auth", `global failure cap reached (${loginFailures.length} failures in window); rejecting logins from all addresses`);
     }
     return true;
   }
@@ -288,11 +300,12 @@ let lastSweptUsageDay = null;
 function sweepDailyReset() {
   const today = pacificDayStart();
   if (lastSweptUsageDay !== null && today !== lastSweptUsageDay) {
-    console.log("[Usage] Pacific midnight reset - cleared previous day's usage and expired cooldowns");
+    log("info", "Usage", "Pacific midnight reset - cleared previous day's usage and expired cooldowns");
   }
   lastSweptUsageDay = today;
-  db.prepare("DELETE FROM requests WHERE created_at < ?").run(today);
-  db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now());
+  const purgedRequests = db.prepare("DELETE FROM requests WHERE created_at < ?").run(today).changes;
+  const purgedCooldowns = db.prepare("DELETE FROM model_key_state WHERE cooldown_until <= ?").run(Date.now()).changes;
+  if (purgedRequests || purgedCooldowns) dbg("Usage", `sweep removed ${purgedRequests} old request row(s), ${purgedCooldowns} expired cooldown(s)`);
 }
 
 function setCooldown(model, keyId, seconds, reason) {
@@ -311,6 +324,7 @@ function keyCooldown(model, keyId) {
 
 function forwardToGemini(request, body, key, opts = {}) {
   return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
     const incomingUrl = new URL(request.url, "http://localhost");
     const upstreamUrl = new URL("https://generativelanguage.googleapis.com");
     upstreamUrl.pathname = incomingUrl.pathname;
@@ -333,6 +347,7 @@ function forwardToGemini(request, body, key, opts = {}) {
       timeout: Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS)),
       headers,
     }, (response) => {
+      dbg("Upstream", `key ${maskKey(key)} -> ${request.method} ${upstreamUrl.pathname}${upstreamUrl.search} started (timeout ${Math.max(1, Math.min(REQUEST_TIMEOUT_MS, Number(opts.timeoutMs) || REQUEST_TIMEOUT_MS))}ms)`);
       const chunks = [];
       let bytes = 0;
       let tooLarge = false;
@@ -343,6 +358,7 @@ function forwardToGemini(request, body, key, opts = {}) {
       });
       response.on("end", () => {
         if (tooLarge) return finish(reject, Object.assign(new Error("Gemini response is too large"), { status: 502 }));
+        dbg("Upstream", `key ${maskKey(key)} <- ${response.statusCode} (${Date.now() - startedAt}ms, ${Buffer.concat(chunks).length} bytes)`);
         finish(resolve, {
           status: response.statusCode || 502,
           headers: response.headers,
@@ -424,14 +440,17 @@ function refreshModelsOnce(request) {
 
 async function refreshModels(request) {
   const keys = enabledKeys();
-  console.log(`[Models] refreshModels: ${keys.length} enabled keys (racing in parallel)`);
+  log("info", "Models", `sync started: racing ${keys.length} enabled key(s)`);
   const attempts = keys.map((key) => (async () => {
     const result = await forwardToGemini(request, Buffer.alloc(0), key.api_key);
-    if (result.status < 200 || result.status >= 300) return { key, result, models: null };
+    if (result.status < 200 || result.status >= 300) {
+      log("warn", "Models", `key ${maskKey(key.api_key)} returned ${result.status}; skipping`);
+      return { key, result, models: null };
+    }
     let payload;
     try { payload = JSON.parse(result.body.toString("utf8")); } catch { payload = null; }
     if (!payload || !Array.isArray(payload.models)) {
-      console.error(`[Models] key ${key.id}: 200 but body is not a models list (first bytes: ${result.body.subarray(0, 40).toString("hex")})`);
+      log("error", "Models", `key ${maskKey(key.api_key)}: 200 but body is not a models list (first bytes: ${result.body.subarray(0, 40).toString("hex")})`);
       return { key, result, models: null };
     }
     const allModels = [...payload.models];
@@ -453,7 +472,7 @@ async function refreshModels(request) {
   let lastResult = null;
   for (const outcome of settled) {
     if (outcome.status !== "fulfilled") {
-      console.error(`[Models] key attempt failed: ${outcome.reason?.message}`);
+      log("error", "Models", `key attempt threw: ${outcome.reason?.message}`);
       continue;
     }
     const { key, result, models } = outcome.value;
@@ -462,11 +481,11 @@ async function refreshModels(request) {
       setMeta("models_cache", JSON.stringify(models));
       setMeta("models_checked_at", Date.now());
       syncModelsFromGemini({ body: Buffer.from(JSON.stringify(models)) });
-      console.log(`[Models] cached ${models.models.length} models from key ${key.id} (raced ${keys.length} keys)`);
+      log("info", "Models", `sync succeeded via key ${maskKey(key.api_key)}: ${models.models.length} models cached`);
       return result;
     }
   }
-  console.log("[Models] all keys failed or no models returned");
+  log("error", "Models", `sync failed on all ${keys.length} key(s)`);
   return lastResult || { status: 503, headers: { "content-type": "application/json" }, body: Buffer.from(JSON.stringify({ error: "No enabled Gemini API keys" })) };
 }
 
@@ -480,7 +499,10 @@ async function handleModelsList(request, response) {
   const checkedAt = Number(getMeta("models_checked_at") || 0);
   if (cached && Array.isArray(cached.models) && cached.models.length) {
     if (Date.now() - checkedAt >= MODELS_CACHE_TTL_MS) {
-      refreshModelsOnce(syntheticModelsRequest()).catch((error) => console.error(`[Models] background refresh failed: ${error.message}`));
+      log("info", "Models", `cache stale (age ${Math.round((Date.now() - checkedAt) / 60000)}min > TTL); serving cached list and refreshing in background`);
+      refreshModelsOnce(syntheticModelsRequest()).catch((error) => log("error", "Models", `background refresh failed: ${error.message}`));
+    } else {
+      dbg("Models", `cache hit (${cached.models.length} models, age ${Math.round((Date.now() - checkedAt) / 60000)}min)`);
     }
     return json(response, 200, cached);
   }
@@ -488,35 +510,50 @@ async function handleModelsList(request, response) {
   // serve instantly while a real refresh runs in the background.
   const dbModels = db.prepare("SELECT name FROM models ORDER BY name").all();
   if (dbModels.length) {
+    log("info", "Models", `cache empty but ${dbModels.length} known models in database; serving DB fallback and refreshing in background`);
     const payload = { models: dbModels.map(m => ({ name: m.name })) };
     setMeta("models_cache", JSON.stringify(payload));
     setMeta("models_checked_at", Date.now());
-    refreshModelsOnce(syntheticModelsRequest()).catch((error) => console.error(`[Models] background refresh failed: ${error.message}`));
+    refreshModelsOnce(syntheticModelsRequest()).catch((error) => log("error", "Models", `background refresh failed: ${error.message}`));
     return json(response, 200, payload);
   }
+  log("info", "Models", `no cache and no known models; blocking on upstream sync`);
   return returnUpstream(response, await refreshModelsOnce(request));
 }
 
 async function handleGemini(request, response, model) {
-  if (!localKeyIsValid(request)) return json(response, 401, { error: "Invalid proxy API key" });
+  if (!localKeyIsValid(request)) {
+    log("warn", "Auth", `rejected ${request.method} ${request.url}: invalid client key from ${clientAddress(request)}`);
+    return json(response, 401, { error: "Invalid proxy API key" });
+  }
 
   let body;
   try { body = await readBody(request); } catch (error) { return json(response, error.status || 400, { error: error.message }); }
-  const keys = enabledKeys().filter((key) => !keyCooldown(model, key.id));
-  if (!keys.length) return json(response, 503, { error: "No enabled Gemini API keys" });
+  const allKeys = enabledKeys();
+  const cooledCount = allKeys.length ? allKeys.filter((key) => keyCooldown(model, key.id)).length : 0;
+  const keys = allKeys.filter((key) => !keyCooldown(model, key.id));
+  if (!keys.length) {
+    log("warn", "Gemini", `${model}: request rejected, no available keys (${allKeys.length} enabled, ${cooledCount} cooling down)`);
+    return json(response, 503, { error: "No enabled Gemini API keys" });
+  }
+  dbg("Gemini", `${model}: ${keys.length} candidate key(s), ${cooledCount} skipped for cooldown`);
 
   const usage = db.prepare("SELECT key_id, COUNT(*) AS count FROM requests WHERE model = ? AND status >= 200 AND status < 300 AND created_at >= ? GROUP BY key_id")
     .all(model, pacificDayStart()).reduce((map, row) => map.set(row.key_id, row.count), new Map());
   keys.sort((left, right) => (usage.get(left.id) || 0) - (usage.get(right.id) || 0) || left.id - right.id);
+  dbg("Gemini", `${model}: rotation order ${keys.map((key) => `#${key.id}(${maskKey(key.api_key)}, used ${usage.get(key.id) || 0})`).join(" -> ")}`);
   let lastResult;
+  let attempt = 0;
   const loopStartedAt = Date.now();
   for (const selected of keys) {
     if (response.writableEnded || response.destroyed) return;
+    attempt += 1;
     const elapsed = Date.now() - loopStartedAt;
     if (elapsed >= KEY_LOOP_DEADLINE_MS) {
-      console.warn(`[Gemini] key loop budget (${KEY_LOOP_DEADLINE_MS}ms) exhausted after ${keys.indexOf(selected)} attempt(s); stopping`);
+      log("warn", "Gemini", `${model}: key loop budget ${KEY_LOOP_DEADLINE_MS}ms exhausted after ${attempt - 1} attempt(s); stopping`);
       break;
     }
+    log("info", "Gemini", `${model}: attempt ${attempt}/${keys.length} using key #${selected.id} ${maskKey(selected.api_key)}`);
     try {
       const result = await forwardToGemini(request, body, selected.api_key, { timeoutMs: KEY_LOOP_DEADLINE_MS - elapsed, clientResponse: response });
       lastResult = result;
@@ -524,21 +561,26 @@ async function handleGemini(request, response, model) {
       const classification = classifyUpstream(result);
       if (classification === "daily_quota") {
         setCooldownUntil(model, selected.id, nextPacificReset(), "daily_quota");
+        log("warn", "Gemini", `key #${selected.id} hit daily quota on ${model}; cooldown until Pacific midnight`);
         continue;
       } else if (classification === "transient" || classification === "invalid_key") {
         setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, classification === "invalid_key" ? "invalid_key" : "high_demand");
+        log("warn", "Gemini", `key #${selected.id} got ${result.status} (${classification}) on ${model}; cooldown ${TRANSIENT_COOLDOWN_SECONDS}s`);
         continue;
       }
+      dbg("Gemini", `${model}: key #${selected.id} succeeded with ${result.status}; returning upstream response to client`);
       return returnUpstream(response, result);
     } catch (error) {
-      console.error(`[Gemini] key ${selected.id}: ${error.message}`);
+      log("warn", "Gemini", `key #${selected.id} transport failure on ${model}: ${error.message}`);
       setCooldown(model, selected.id, TRANSIENT_COOLDOWN_SECONDS, "upstream_error");
       if (response.writableEnded || response.destroyed) return;
     }
   }
   if (lastResult) {
+    log("info", "Gemini", `${model}: all ${attempt} attempt(s) exhausted; returning last upstream status ${lastResult.status}`);
     return returnUpstream(response, lastResult);
   }
+  log("error", "Gemini", `${model}: all ${attempt} attempt(s) failed without an upstream response`);
   return json(response, 502, { error: "All Gemini API keys failed" });
 }
 
@@ -554,7 +596,10 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/health") return json(response, 200, { ok: true });
   if (url.pathname === "/v1beta/models" && ["GET", "POST"].includes(request.method)) {
-    if (!localKeyIsValid(request)) return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
+    if (!localKeyIsValid(request)) {
+      log("warn", "Auth", `rejected ${request.method} /v1beta/models: invalid client key from ${clientAddress(request)}`);
+      return json(response, 401, { error: { code: 401, status: "UNAUTHENTICATED", message: "Invalid proxy API key" } });
+    }
     return handleModelsList(request, response);
   }
   if (url.pathname === "/" && request.method === "GET") {
@@ -569,7 +614,11 @@ async function handleRequest(request, response) {
     if (hasAdmin()) return json(response, 409, { error: "Setup is already complete" });
     if (rateLimited(clientAddress(request))) return json(response, 429, { error: "Too many setup attempts" });
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
-    if (!constantTimeEqual(body.setupToken || "", SETUP_TOKEN)) { recordLoginFailure(clientAddress(request)); return json(response, 403, { error: "Invalid setup token" }); }
+    if (!constantTimeEqual(body.setupToken || "", SETUP_TOKEN)) {
+      log("warn", "Auth", `invalid setup token from ${clientAddress(request)}`);
+      recordLoginFailure(clientAddress(request));
+      return json(response, 403, { error: "Invalid setup token" });
+    }
     if (!/^[a-zA-Z0-9_.-]{3,64}$/.test(String(body.username || ""))) return json(response, 400, { error: "Username must be 3-64 letters, numbers, _, ., or -" });
     if (String(body.password || "").length < 8) return json(response, 400, { error: "Password must be at least 8 characters" });
     const salt = crypto.randomBytes(16).toString("hex");
@@ -588,16 +637,24 @@ async function handleRequest(request, response) {
   }
   if (url.pathname === "/login" && request.method === "POST") {
     const address = clientAddress(request);
-    if (rateLimited(address)) return json(response, 429, { error: "Too many login attempts; try again later" });
+    if (rateLimited(address)) {
+      log("warn", "Auth", `login rate-limited from ${address}`);
+      return json(response, 429, { error: "Too many login attempts; try again later" });
+    }
     let raw; try { raw = (await readBody(request)).toString(); } catch { return json(response, 400, { error: "Invalid request" }); }
     const body = Object.fromEntries(new URLSearchParams(raw));
     const username = String(body.username || "");
     const user = username ? db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username) : null;
-    if (!user || !(await passwordValid(String(body.password || ""), user))) { recordLoginFailure(address); return json(response, 401, { error: "Invalid username or password" }); }
+    if (!user || !(await passwordValid(String(body.password || ""), user))) {
+      log("warn", "Auth", `failed login for username '${username || "(empty)"}' from ${address}`);
+      recordLoginFailure(address);
+      return json(response, 401, { error: "Invalid username or password" });
+    }
     loginAttempts.delete(address);
     const token = crypto.randomBytes(32).toString("hex");
     const csrfToken = crypto.randomBytes(32).toString("hex");
     sessions.set(token, { expiresAt: Date.now() + SESSION_TTL_MS, csrfToken });
+    log("info", "Auth", `user '${username}' logged in from ${address} (session expires in ${SESSION_TTL_MS / 3600000}h)`);
     const secure = request.headers["x-forwarded-proto"] === "https" || request.socket.encrypted ? "; Secure" : "";
     response.writeHead(302, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": [`gemini_dashboard=${token}; HttpOnly; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`, `gemini_csrf=${csrfToken}; SameSite=Strict; Max-Age=${SESSION_TTL_MS / 1000}${secure}`] }); return response.end();
   }
@@ -605,11 +662,18 @@ async function handleRequest(request, response) {
     if (!csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
     const token = (request.headers.cookie || "").match(/(?:^|; )gemini_dashboard=([^;]+)/)?.[1];
     if (token) sessions.delete(token);
+    log("info", "Auth", `user logged out`);
     response.writeHead(303, { Location: "/", "Cache-Control": "no-store", "Set-Cookie": ["gemini_dashboard=; HttpOnly; SameSite=Strict; Max-Age=0", "gemini_csrf=; SameSite=Strict; Max-Age=0"] });
     return response.end();
   }
-  if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) return json(response, 401, { error: "Dashboard login required" });
-  if (url.pathname.startsWith("/api/admin") && request.method !== "GET" && !csrfValid(request)) return json(response, 403, { error: "Invalid CSRF token" });
+  if (url.pathname.startsWith("/api/admin") && !dashboardSessionValid(request)) {
+    if (!url.pathname.startsWith("/api/admin/state")) log("warn", "Auth", `rejected ${request.method} ${url.pathname}: no valid dashboard session`);
+    return json(response, 401, { error: "Dashboard login required" });
+  }
+  if (url.pathname.startsWith("/api/admin") && request.method !== "GET" && !csrfValid(request)) {
+    log("warn", "Auth", `rejected ${request.method} ${url.pathname}: invalid CSRF token`);
+    return json(response, 403, { error: "Invalid CSRF token" });
+  }
   if (url.pathname === "/api/admin/state" && request.method === "GET") {
     const keys = db.prepare("SELECT id,label,enabled,substr(api_key,1,6)||'...' AS masked FROM api_keys ORDER BY id").all();
     const clientKeys = db.prepare("SELECT id,label,enabled,key_prefix AS masked,key_text AS value FROM client_keys ORDER BY id").all();
@@ -617,6 +681,7 @@ async function handleRequest(request, response) {
     return json(response, 200, { keys, clientKeys, usage: usageStats(), resetAt: new Date(pacificDayStart()).toISOString(), resetTimezone: "America/Los_Angeles", modelsCheckedAt: getMeta("models_checked_at"), models });
   }
   if (url.pathname === "/api/admin/models/refresh" && request.method === "POST") {
+    log("info", "Admin", `manual model refresh requested`);
     const result = await refreshModelsOnce(syntheticModelsRequest());
     const ok = result.status >= 200 && result.status < 300;
     return json(response, ok ? 200 : 502, { ok, status: result.status });
@@ -624,58 +689,75 @@ async function handleRequest(request, response) {
   if (url.pathname === "/api/admin/client-keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
     const clientApiKey = createClientKey(String(body.label || "Client key"));
+    log("info", "Admin", `client key created: '${String(body.label || "Client key")}' ${maskKey(clientApiKey)}`);
     return json(response, 201, { ok: true, clientApiKey });
   }
   const clientKeyMatch = url.pathname.match(/^\/api\/admin\/client-keys\/(\d+)$/);
-  if (clientKeyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE client_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(clientKeyMatch[1])); return json(response, 200, { ok: true }); }
-  if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); return json(response, 200, { ok: true }); }
+  if (clientKeyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE client_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} ${body.enabled ? "enabled" : "disabled"}`); return json(response, 200, { ok: true }); }
+  if (clientKeyMatch && request.method === "DELETE") { db.prepare("DELETE FROM client_keys WHERE id=?").run(Number(clientKeyMatch[1])); log("info", "Admin", `client key #${clientKeyMatch[1]} deleted`); return json(response, 200, { ok: true }); }
   if (url.pathname === "/api/admin/keys" && request.method === "POST") {
     let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); }
     if (!body.label || !body.key) return json(response, 400, { error: "Label and key are required" });
-    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(String(body.label), String(body.key), Date.now()); return json(response, 201, { ok: true });
+    db.prepare("INSERT INTO api_keys (label,api_key,created_at) VALUES (?,?,?)").run(String(body.label), String(body.key), Date.now());
+    log("info", "Admin", `Gemini key added: '${String(body.label)}' ${maskKey(String(body.key))}`);
+    return json(response, 201, { ok: true });
   }
   const keyMatch = url.pathname.match(/^\/api\/admin\/keys\/(\d+)$/);
-  if (keyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE api_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(keyMatch[1])); return json(response, 200, { ok: true }); }
+  if (keyMatch && request.method === "PATCH") { let body; try { body = JSON.parse((await readBody(request)).toString()); } catch { return json(response, 400, { error: "Invalid JSON" }); } db.prepare("UPDATE api_keys SET enabled=? WHERE id=?").run(body.enabled ? 1 : 0, Number(keyMatch[1])); log("info", "Admin", `Gemini key #${keyMatch[1]} ${body.enabled ? "enabled" : "disabled"}`); return json(response, 200, { ok: true }); }
   if (keyMatch && request.method === "DELETE") {
     const keyId = Number(keyMatch[1]);
+    const deleted = db.prepare("SELECT label FROM api_keys WHERE id=?").get(keyId);
     db.prepare("DELETE FROM requests WHERE key_id=?").run(keyId);
     db.prepare("DELETE FROM model_key_state WHERE key_id=?").run(keyId);
     db.prepare("DELETE FROM api_keys WHERE id=?").run(keyId);
+    log("info", "Admin", `Gemini key #${keyId}${deleted ? ` ('${deleted.label}')` : ""} deleted with its usage data`);
     return json(response, 200, { ok: true });
   }
   if (request.method === "POST") { const model = modelNameFromPath(url.pathname); if (model) return handleGemini(request, response, model); }
+  dbg("HTTP", `no route matched: ${request.method} ${url.pathname}`);
   return json(response, 404, { error: "Not found" });
 }
 
 const server = http.createServer((request, response) => {
   response.on("error", () => {});
+  const startedAt = Date.now();
+  const peer = clientAddress(request);
+  response.on("finish", () => {
+    log("info", "HTTP", `${request.method} ${request.url} -> ${response.statusCode} (${Date.now() - startedAt}ms) from ${peer}`);
+  });
+  response.on("close", () => {
+    if (!response.writableEnded) log("warn", "HTTP", `${request.method} ${request.url} ABORTED by client after ${Date.now() - startedAt}ms from ${peer}`);
+  });
   handleRequest(request, response).catch((error) => {
-    console.error(`[HTTP] ${error.stack || error.message}`);
+    log("error", "HTTP", `handler failed for ${request.method} ${request.url}: ${error.stack || error.message}`);
     if (!response.headersSent) json(response, error.status || 500, { error: "Internal server error" });
     else response.destroy();
   });
 });
 
 function shutdown(signal) {
-  console.log(`[Shutdown] ${signal} received; closing server`);
+  log("info", "Shutdown", `${signal} received; closing server`);
   server.close(() => { try { db.close(); } catch {} process.exit(0); });
   setTimeout(() => process.exit(0), 3000).unref();
 }
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-sweepDailyReset();
 setInterval(() => {
   try {
     sweepDailyReset();
     const now = Date.now();
+    let expired = 0;
     for (const [token, session] of sessions) {
-      if (session.expiresAt <= now) sessions.delete(token);
+      if (session.expiresAt <= now) { sessions.delete(token); expired += 1; }
     }
-  } catch (error) { console.error(`[Usage] sweep failed: ${error.message}`); }
+    if (expired) dbg("Auth", `pruned ${expired} expired session(s)`);
+  } catch (error) { log("error", "Usage", `sweep failed: ${error.message}`); }
 }, 60_000).unref();
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Gemini proxy listening on port ${PORT}`);
-  if (!hasAdmin()) console.log(`[Setup] One-time setup token: ${SETUP_TOKEN}`);
+  log("info", "Boot", `Gemini proxy listening on port ${PORT} (log level: ${LOG_LEVEL})`);
+  if (!hasAdmin()) log("info", "Setup", `one-time setup token: ${SETUP_TOKEN}`);
 });
+
+sweepDailyReset();
