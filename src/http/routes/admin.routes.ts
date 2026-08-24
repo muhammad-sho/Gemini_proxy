@@ -79,6 +79,10 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
           parsed.data.allowedModels ?? [],
           parsed.data.allowedGroups ?? []
         );
+        // Populate the model cache for this credential right away so admins
+        // can select models immediately; failures surface in /state or via
+        // the manual refresh button.
+        void deps.modelCacheService.refresh(created.id).catch(() => { /* logged in service */ });
         return reply.status(201).send({ id: created.id });
       } catch (err: any) {
         return reply.status(500).send({ error: { code: 500, message: String(err?.message ?? err), requestId: req.id } });

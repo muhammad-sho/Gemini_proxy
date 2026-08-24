@@ -20,6 +20,15 @@ async function startMock(): Promise<number> {
     req.on("data", c => (raw += c));
     req.on("end", () => {
       const auth = String(req.headers["x-goog-api-key"] ?? "");
+
+      // Model listing (triggered by credential creation) — not counted as
+      // routing attempts. Must not swallow /models/{model}:action URLs.
+      if (req.url?.startsWith("/v1beta/models") && !req.url.includes(":")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ models: [{ name: "models/mock-probe", displayName: "Mock Probe" }] }));
+        return;
+      }
+
       hits[auth] = (hits[auth] ?? 0) + 1;
 
       if (auth === "BAD_KEY") {
