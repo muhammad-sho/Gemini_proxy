@@ -22,7 +22,7 @@ const loginFailures = [];
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || "");
 const SETUP_TOKEN = process.env.SETUP_TOKEN || crypto.randomBytes(32).toString("base64url");
 const ENCRYPTION_KEY_B64 = process.env.APP_ENCRYPTION_KEY || null;
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 function log(level, category, message) {
   const line = `${new Date().toISOString()} ${level.toUpperCase().padEnd(5)} [${category}] ${message}`;
@@ -69,6 +69,37 @@ function decryptApiKey(ciphertext) {
     log("warn", "Crypto", `failed to decrypt api_key: ${e.message}`);
     return ciphertext;
   }
+}
+
+
+function validateStartupConfig() {
+  const required = [];
+  const warnings = [];
+
+  if (!ENCRYPTION_KEY_B64) {
+    warnings.push("APP_ENCRYPTION_KEY not set - provider keys will be stored in plaintext");
+  } else {
+    const buf = Buffer.from(ENCRYPTION_KEY_B64, "base64");
+    if (buf.length !== 32) {
+      required.push("APP_ENCRYPTION_KEY must be 32 bytes (base64 encoded)");
+    }
+  }
+
+  if (!process.env.SETUP_TOKEN) {
+    warnings.push("SETUP_TOKEN not set - using random token (will be printed on startup)");
+  }
+
+  if (!process.env.DB_PATH) {
+    warnings.push("DB_PATH not set - using default './local-gemini-proxy.db'");
+  }
+
+  if (required.length) {
+    for (const msg of required) log("error", "Boot", msg);
+    throw new Error("Startup validation failed: " + required.join("; "));
+  }
+  for (const msg of warnings) log("warn", "Boot", msg);
+
+  log("info", "Boot", "Startup validation passed");
 }
 
 function runMigrations() {
@@ -128,6 +159,14 @@ function runMigration(v) {
           details TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at);
+      `);
+      break;
+    case 8:
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS aliases (
+          alias TEXT PRIMARY KEY,
+          target_model TEXT NOT NULL
+        );
       `);
       break;
     default:
@@ -777,6 +816,11 @@ async function checkHealth() {
   try {
     if (!getEncryptionKey()) return { ready: false, reason: "encryption key not configured" };
     db.prepare("SELECT 1").get();
+    // Check schema version
+    const schemaVersion = Number(db.prepare("SELECT value FROM app_meta WHERE key = 'schema_version'").get()?.value || 0);
+    if (schemaVersion < SCHEMA_VERSION) {
+      return { ready: false, reason: `schema version ${schemaVersion} < required ${SCHEMA_VERSION}` };
+    }
     return { ready: true };
   } catch (e) {
     return { ready: false, reason: e.message };
@@ -1147,6 +1191,7 @@ async function handleRequest(request, response) {
     return;
   }
   if (url.pathname === "/health/live") return json(response, 200, { status: "alive" });
+  if (url.pathname === "/health/live") return json(response, 200, { status: "alive" });
   if (url.pathname === "/health/ready") {
     const health = await checkHealth();
     return json(response, health.ready ? 200 : 503, health);
@@ -1446,6 +1491,10 @@ setInterval(() => {
     if (expired) dbg("Auth", `pruned ${expired} expired session(s)`);
   } catch (error) { log("error", "Usage", `sweep failed: ${error.message}`); }
 }, 60_000).unref();
+
+validateStartupConfig();
+runMigrations();
+warmCaches();
 
 server.listen(PORT, "0.0.0.0", () => {
   log("info", "Boot", `Gemini proxy listening on port ${PORT} (full debug logging enabled)`);
