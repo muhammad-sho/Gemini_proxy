@@ -6,6 +6,7 @@ import {
   type GenerateResponse,
   classifyUpstreamError
 } from "../../domain/providers/adapter.js";
+import { MAX_LIST_RESPONSE_BYTES } from "../../shared/constants.js";
 
 const DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
 
@@ -37,7 +38,11 @@ export class GeminiAdapter implements ProviderAdapter {
         throw new Error(`Gemini listModels failed (${response.status}): ${body.slice(0, 500)}`);
       }
 
-      const data = (await response.json()) as {
+      const raw = await response.text();
+      if (raw.length > MAX_LIST_RESPONSE_BYTES) {
+        throw new Error(`Gemini listModels response too large (${raw.length} bytes)`);
+      }
+      const data = JSON.parse(raw) as {
         models?: Array<{
           name: string;
           displayName?: string;

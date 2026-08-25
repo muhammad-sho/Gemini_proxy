@@ -14,3 +14,6 @@ export const FASTIFY_REQUEST_TIMEOUT_MS = 60_000;
 
 /** Masking token for request-log bodies. */
 export const LOG_SECRET_MASK = "[MASKED]";
+
+/** Max bytes accepted when parsing upstream model-list responses (2 MB). */
+export const MAX_LIST_RESPONSE_BYTES = 2_000_000;

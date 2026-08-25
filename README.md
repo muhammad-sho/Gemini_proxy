@@ -252,6 +252,7 @@ Everything runs on built-in defaults — there is no `.env` file and nothing to 
 | --- | --- | --- |
 | `LOG_LEVEL` | `info` (`debug` in dev) | Standard pino levels: `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
+| `HSTS` | `false` | Send Strict-Transport-Security (enable only when served over HTTPS) |
 | `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
 | `GATEWAY_HOST` / `ADMIN_HOST` | `0.0.0.0` / `127.0.0.1` | Bind addresses (dashboard stays local by default without Docker) |
 
@@ -269,7 +270,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 
 * **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; the dashboard is a separate port. It is published openly by default for easy self-hosting — bind it to loopback (see "Ports and Exposure") on shared or internet-facing machines.
 * **No secrets in config files**: the admin password is created in the browser on first open (one-time setup endpoint; refuses once an account exists) and stored as a bcrypt hash.
-* Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login and setup are rate-limited and audited.
+* Admin auth: session cookie (`httpOnly`, SameSite=strict, `__Host-` prefixed over HTTPS) + CSRF token mirrored via `x-csrf-token`; login/setup sit in a dedicated 10/min/IP brute-force bucket and every action is audited.
 * Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
 * Provider credentials encrypted at rest with AES-256-GCM; the key is generated automatically inside `data/` — back up that folder to back up everything.
 * Helmet headers on every surface, CSP for the dashboard; body-size limits everywhere; per-IP rate limiting on all three surfaces.

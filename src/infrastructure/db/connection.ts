@@ -25,8 +25,7 @@ export function closeDb(): void {
   }
 }
 
-export function runMigrations(db: Database.Database): void {
-  const migrations = [
+const migrations = [
     // 001_initial_schema
     `CREATE TABLE IF NOT EXISTS admin_users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -196,14 +195,20 @@ export function runMigrations(db: Database.Database): void {
     )`,
     `CREATE INDEX idx_model_group_pairs_target ON model_group_pairs(credential_id, model_id)`,
     `ALTER TABLE model_credential_state ADD COLUMN avg_latency_ms INTEGER`
-  ];
+];
 
-  // Apply migrations
+/**
+ * Apply pending migrations. `upTo` applies only a prefix of the migration
+ * list (test fixture support: build an "old" database, then migrate it fully).
+ * Returns the resulting schema version.
+ */
+export function runMigrations(db: Database.Database, upTo?: number): number {
   db.exec(`CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
       applied_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     )`);
-  for (let i = 0; i < migrations.length; i++) {
+  const limit = upTo ?? migrations.length;
+  for (let i = 0; i < Math.min(limit, migrations.length); i++) {
     const version = i + 1;
     const existing = db.prepare("SELECT version FROM schema_version WHERE version = ?").get(version);
     if (!existing) {
@@ -211,6 +216,7 @@ export function runMigrations(db: Database.Database): void {
       db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(version);
     }
   }
+  return getSchemaVersion(db);
 }
 
 export function getSchemaVersion(db: Database.Database): number {

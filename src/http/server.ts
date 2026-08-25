@@ -147,13 +147,18 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
+        styleSrc: ["'self'"],
         scriptSrc: ["'self'"],
         imgSrc: ["'self'", "data:"],
         // Served over plain HTTP on LAN; upgrading to https:// breaks asset loading.
         upgradeInsecureRequests: null
       }
-    }
+    },
+    // Strict-Transport-Security is opt-in via HSTS=true — sending it over
+    // plain HTTP can make browsers refuse future unencrypted visits.
+    hsts: config.hsts
+      ? { maxAge: 15552000 }
+      : false
   });
   await registerRateLimit(admin);
 

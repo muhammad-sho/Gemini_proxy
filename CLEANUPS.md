@@ -49,3 +49,19 @@ workstreams in `proposed-plan.md`.
 ### Deliberately NOT changed this wave
 * Streaming/countTokens remain deferred (roadmap D1/D2).
 * Per-client-key rate-limit buckets land with E2 (Wave 3).
+
+## Wave 3 — hardening (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 28 | `src/application/gateway/providerProbe.service.ts` | New `assertNotMetadataTarget()` — probe refuses cloud-metadata/link-local hosts (`169.254.*`, `fe80:*`, `*.metadata.*`, `*.internal`); LAN/loopback upstreams stay allowed | Unguarded arbitrary-URL probing | A5 (scoped: self-hosted LAN upstreams are legitimate, so RFC1918 is *not* blocked) |
+| 29 | `gemini.adapter.ts` / `openai-compatible.adapter.ts` + `constants.MAX_LIST_RESPONSE_BYTES` | Model-list responses read as text and rejected beyond 2 MB before JSON parse | Unbounded `response.json()` | A5 |
+| 30 | `connection.ts` | `runMigrations(db, upTo?)` applies a prefix and returns the schema version; `migrations` array moved to module scope (was function-local) | Old void-returning single-mode signature | A6 fixture support |
+| 31 | `migration.test.ts` (new) | Legacy-database fixture: builds schema at `total-3`, seeds old-shape rows, completes upgrade in place, asserts data survives + new columns default NULL; runs in CI via vitest | — | A6 |
+| 32 | `server.ts` helmet + `GroupsPage/ClientKeysPage/ProviderCredentialsPage/global.css` | CSP drops `'unsafe-inline'` from styleSrc; the last inline styles moved to classes (`.row-stale`, `.hint-first`) | **Deprecated:** `styleSrc 'unsafe-inline'`; inline `style={{}}` usage | E1 |
+| 33 | `auth.routes.ts` | Dedicated brute-force bucket on `/login` + `/setup`: max 10/min per IP under isolated key `auth:<ip>` (shared global limiter untouched) | Credential attempts sharing the general 300/min bucket | E2 |
+| 34 | `auth.routes.ts` | Over HTTPS cookies upgrade to `__Host-gemini_admin_session` / `__Host-gemini_csrf`; session reads accept both names; logout clears both variants | Plain-name cookies on secure deployments | E3 |
+| 35 | env plumbing (`validation/types/config`) + `server.ts` helmet + README/compose | `HSTS=true` opt-in enables Strict-Transport-Security; **default now off** (helmet previously always sent HSTS, even over plain HTTP) | Always-on HSTS header | E3 |
+| 36 | `gateway.int.test.ts` | New cases: HTTPS login yields `__Host-` cookies + authenticates; HSTS header absent by default; 12 wrong logins hit 429; suite enables `TRUST_PROXY` to exercise forwarded-proto paths | — | E2/E3 coverage |
+
+E2 remainder deferred: admin-tunable global rate limit and per-client-key gateway buckets.

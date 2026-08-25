@@ -6,6 +6,7 @@ import { join } from "path";
 
 const dataDir = mkdtempSync(join(tmpdir(), "gwtest-"));
 process.env.DATA_DIR = dataDir;
+process.env.TRUST_PROXY = "true";
 
 const ADMIN_PASSWORD = "test-admin-password";
 
@@ -127,7 +128,7 @@ describe("split gateway surfaces", () => {
     expect(setup.statusCode).toBe(200);
     const cookies = setup.cookies.map((c: Cookie) => `${c.name}=${c.value}`).join("; ");
     adminCookie = cookies;
-    const sessionCookie = setup.cookies.find((c: Cookie) => c.name === "gemini_csrf");
+    const sessionCookie = setup.cookies.find((c: Cookie) => c.name.endsWith("gemini_csrf"));
     csrf = sessionCookie?.value ?? "";
 
     const statusAfter = await adminApp.inject({ method: "GET", url: "/api/admin/v1/setup/status" });
@@ -570,6 +571,50 @@ describe("split gateway surfaces", () => {
     expect(flash).toBeDefined();
     expect(flash!.requests).toBeGreaterThan(0);
     expect(flash!.promptTokens).toBeGreaterThan(0);
+  });
+
+  it("upgrades to __Host- cookies over HTTPS and leaves HSTS off by default", async () => {
+    // HSTS is opt-in (HSTS=true) — plain HTTP responses must not send it.
+    const health = await adminApp.inject({ method: "GET", url: "/health/live" });
+    expect(health.headers["strict-transport-security"]).toBeUndefined();
+
+    const httpsLogin = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/login",
+      headers: { "x-forwarded-proto": "https", "content-type": "application/json" },
+      payload: { token: ADMIN_PASSWORD }
+    });
+    expect(httpsLogin.statusCode).toBe(200);
+    expect(httpsLogin.headers["strict-transport-security"]).toBeUndefined();
+
+    const names = httpsLogin.cookies.map((c: Cookie) => c.name);
+    expect(names).toContain("__Host-gemini_admin_session");
+    expect(names).toContain("__Host-gemini_csrf");
+
+    // The prefixed session authenticates normally.
+    const session = httpsLogin.cookies.find((c: Cookie) => c.name === "__Host-gemini_admin_session")!;
+    const res = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/state",
+      headers: {
+        cookie: `${session.name}=${session.value}`,
+        "x-forwarded-proto": "https"
+      }
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("rate-limits repeated credential attempts on a dedicated auth bucket", async () => {
+    let saw429 = false;
+    for (let i = 0; i < 12; i++) {
+      const res = await adminApp.inject({
+        method: "POST",
+        url: "/api/admin/v1/login",
+        payload: { token: "definitely-wrong" }
+      });
+      if (res.statusCode === 429) saw429 = true;
+    }
+    expect(saw429).toBe(true);
   });
 
   // ---- Admin surface ----

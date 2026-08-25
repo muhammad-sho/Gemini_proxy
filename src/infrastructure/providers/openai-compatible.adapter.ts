@@ -6,6 +6,7 @@ import {
   type GenerateResponse,
   classifyUpstreamError
 } from "../../domain/providers/adapter.js";
+import { MAX_LIST_RESPONSE_BYTES } from "../../shared/constants.js";
 
 const DEFAULT_BASE_URL = "https://api.openai.com";
 
@@ -43,7 +44,11 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
       throw new Error(`OpenAI listModels failed (${response.status}): ${body.slice(0, 500)}`);
     }
 
-    const data = (await response.json()) as OpenAIModelListResponse;
+    const raw = await response.text();
+    if (raw.length > MAX_LIST_RESPONSE_BYTES) {
+      throw new Error(`OpenAI listModels response too large (${raw.length} bytes)`);
+    }
+    const data = JSON.parse(raw) as OpenAIModelListResponse;
     return (data.data ?? []).map(m => ({
       id: m.id,
       name: m.id,

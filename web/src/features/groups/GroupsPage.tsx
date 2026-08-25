@@ -145,7 +145,7 @@ function GroupModal({
                 {pairs.map((p, i) => {
                   const stale = isStale(p);
                   return (
-                    <tr key={`${p.credentialId}:${p.modelId}`} style={stale ? { opacity: 0.6 } : undefined}>
+                    <tr key={`${p.credentialId}:${p.modelId}`} className={stale ? "row-stale" : ""}>
                       <td>
                         {labelFor(p.credentialId)}
                         {stale && <span className="pill pill-error" title="This credential no longer selects this model">stale</span>}

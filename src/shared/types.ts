@@ -5,6 +5,7 @@ export interface EnvConfig {
   gatewayHost: string;
   adminHost: string;
   trustProxy: boolean;
+  hsts: boolean;
   nodeEnv: "development" | "production" | "test";
   logLevel?: "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 }
@@ -16,6 +17,7 @@ export const envSchema = {
   gatewayHost: { default: "0.0.0.0" },
   adminHost: { default: "127.0.0.1" },
   trustProxy: { default: false, coerce: true },
+  hsts: { default: false, coerce: true },
   nodeEnv: { default: "development" },
   logLevel: { default: undefined }
 } as const;

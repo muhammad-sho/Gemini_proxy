@@ -22,6 +22,7 @@ services:
       # ---- optional overrides (everything else uses built-in defaults) ----
       # LOG_LEVEL: debug       # fatal | error | warn | info | debug | trace
       # TRUST_PROXY: "true"    # behind a reverse proxy that sets X-Forwarded-*
+      # HSTS: "true"           # only when the dashboard is served over HTTPS
       # To move a port publicly, change the HOST side of a mapping above,
       # e.g. "8080:18765" serves the dashboard at http://host:8080.
 

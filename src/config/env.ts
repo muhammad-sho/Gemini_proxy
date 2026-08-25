@@ -12,6 +12,7 @@ export function loadConfig(): EnvConfig {
     GATEWAY_HOST: process.env.GATEWAY_HOST,
     ADMIN_HOST: process.env.ADMIN_HOST,
     TRUST_PROXY: process.env.TRUST_PROXY,
+    HSTS: process.env.HSTS,
     NODE_ENV: process.env.NODE_ENV,
     LOG_LEVEL: process.env.LOG_LEVEL
   };

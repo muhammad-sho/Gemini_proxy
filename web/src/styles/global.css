@@ -160,3 +160,5 @@ legend { color: var(--text-dim); font-size: 12px; padding: 0 6px; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
+.row-stale { opacity: 0.6; }
+.hint-first { margin-top: 0; }

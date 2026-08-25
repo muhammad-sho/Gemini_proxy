@@ -13,6 +13,10 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform(v => v === "true" || v === "1"),
+  HSTS: z
+    .string()
+    .optional()
+    .transform(v => v === "true" || v === "1"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).optional()
 });
@@ -31,6 +35,7 @@ export function validateEnv(env: Record<string, string | undefined>): EnvConfig 
     gatewayHost: d.GATEWAY_HOST,
     adminHost: d.ADMIN_HOST,
     trustProxy: d.TRUST_PROXY,
+    hsts: d.HSTS,
     nodeEnv: d.NODE_ENV,
     logLevel: d.LOG_LEVEL
   };
