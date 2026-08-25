@@ -135,7 +135,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
       {state.cooling.length === 0 ? (
         <p className="hint">No keys are cooling down.</p>
       ) : (
-        <table className="table">
+        <div className="table-scroll"><table className="table">
           <thead>
             <tr><th>Model</th><th>Credential</th><th>Reason</th><th>Cooldown ends in</th></tr>
           </thead>
@@ -151,7 +151,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </section>
   );

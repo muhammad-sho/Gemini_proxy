@@ -239,7 +239,7 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add your first provider key</button>
         </div>
       ) : (
-        <table className="table">
+        <div className="table-scroll"><table className="table">
           <thead>
             <tr><th>Label</th><th>Provider</th><th>Base URL</th><th>Models</th><th>Created</th><th /></tr>
           </thead>
@@ -262,7 +262,7 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {(showModal || editing) && (

@@ -142,3 +142,9 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 | # | File | Change | Deprecated / removed | Why |
 |---|------|--------|----------------------|-----|
 | 62 | `modelGroups.ts`, `env.ts`, `validation.ts` | Review sweep of src + web: removed unused `ROUTING_STRATEGIES` const, unused `getConfig()` accessor, and 8 unreferenced `z.infer` type aliases. Verified clean otherwise: no dead CSS classes, no unused npm deps, no debug leftovers, README/plan docs current, `.gitignore` covers build/data artifacts | `ROUTING_STRATEGIES`, `getConfig()`, `ClientKeyCreate`/`ProviderCredentialCreate`/`ProviderCredentialUpdate`/`RoutingStrategyInput`/`GroupCreate`/`GroupUpdate`/`ClientKeyUpdate`/`ProviderProbe` type aliases | Dead code from earlier waves; schemas remain in use via routes |
+
+## Mobile / responsive pass (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 63 | `global.css` (responsive section), all feature pages (6 tables wrapped) | Phone-first improvements: every plain table now scrolls horizontally inside a `.table-scroll` box (min-width floor keeps columns readable); topbar collapses to brand row + single swipeable tab strip with edge-to-edge scroll; inputs sized ≥16px so iOS doesn't zoom on focus; full-width buttons/inputs in forms and action rows (38–40px touch targets); 2-column stat grid; tighter shell/page paddings; modals become bottom sheets with internal scroll; log detail grid stacks to one column; toasts span viewport width; matrix cells tightened (52px) with 60vh cap; long `<code>` values ellipsize in table cells. Desktop (>720px) unchanged | — | User-directed visual update for phone |

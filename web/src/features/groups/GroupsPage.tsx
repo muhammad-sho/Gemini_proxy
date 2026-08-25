@@ -139,7 +139,7 @@ function GroupModal({
           {pairs.length === 0 ? (
             <p className="hint">No targets yet. A group needs at least one key × model combination.</p>
           ) : (
-            <table className="table">
+            <div className="table-scroll"><table className="table">
               <thead><tr><th>Provider key</th><th>Model</th><th /></tr></thead>
               <tbody>
                 {pairs.map((p, i) => {
@@ -164,7 +164,7 @@ function GroupModal({
                   );
                 })}
               </tbody>
-            </table>
+            </table></div>
           )}
           {stalePairs.length > 0 && (
             <p className="hint">
@@ -214,7 +214,7 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
       {state.groups.length === 0 ? (
         <p className="hint">No groups yet.</p>
       ) : (
-        <table className="table">
+        <div className="table-scroll"><table className="table">
           <thead>
             <tr><th>Name</th><th>Description</th><th>Strategy</th><th>Fallback</th><th>Targets</th><th /></tr>
           </thead>
@@ -237,7 +237,7 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {(showModal || editing) && (

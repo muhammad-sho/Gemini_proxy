@@ -283,3 +283,71 @@ legend { color: var(--text-muted); font-size: 11px; font-weight: 800; letter-spa
 .cell-err   { color: var(--err);  background: var(--err-bg); }
 .cell-idle  { color: var(--text-muted); background: transparent; font-weight: 400; }
 .cell-legend { display: inline-flex; align-items: center; gap: 5px; margin-left: 14px; }
+
+/* ------------------------------------------------------------ responsive */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll .table { margin-top: 10px; min-width: 560px; }
+
+@media (max-width: 720px) {
+  body { -webkit-tap-highlight-color: transparent; }
+
+  /* tighter shell */
+  .shell { padding: 0 12px 40px; }
+  .page { padding: 14px; }
+  .page-header { gap: 8px; }
+  .page-header h1 { font-size: 16px; }
+  h2 { margin-top: 22px; }
+
+  /* topbar: brand row, then one swipeable tab strip */
+  .topbar { flex-wrap: wrap; gap: 4px 10px; padding: 10px 0 14px; margin-bottom: 16px; }
+  .brand { flex: 1; padding-bottom: 6px; }
+  .tabs {
+    order: 3; flex-basis: 100%;
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    border-top: 1px solid var(--border);
+    margin: 0 -12px; padding: 0 12px;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; padding: 11px 12px; }
+
+  /* touch targets + no iOS focus zoom */
+  .btn { padding: 9px 14px; min-height: 38px; }
+  input, select { font-size: 16px; padding: 9px 10px; min-height: 40px; max-width: 100%; }
+  .search { width: 100%; }
+  .form label input, .form label select, .form > button, .actions .btn { width: 100%; }
+  .actions { width: 100%; }
+  .confirm-pair { display: flex; width: 100%; }
+  .confirm-pair .btn { flex: 1; }
+
+  /* cards & stats */
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 12px 14px; }
+  .stat-value { font-size: 22px; }
+
+  /* tables scroll inside their box; cells stay compact */
+  .table th, .table td { padding: 7px 8px; }
+  td code, th code { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; white-space: nowrap; }
+
+  /* matrix fits more columns per swipe */
+  .matrix-cell { min-width: 52px; padding: 5px 6px; }
+  .matrix thead th { max-width: 110px; }
+  .matrix-wrap { max-height: 60vh; }
+
+  /* modals become sheets */
+  .modal-backdrop { padding: 12px 8px; align-items: flex-end; }
+  .modal { width: 100%; }
+  .modal-body { padding: 14px; max-height: 72vh; overflow-y: auto; }
+
+  /* stacked detail rows instead of wide label column */
+  .detail-grid { grid-template-columns: 1fr; }
+  .detail-grid dt { margin-top: 6px; }
+  .tl-detail { margin-left: 0; }
+
+  /* toasts span the width */
+  .toast-stack { left: 12px; right: 12px; bottom: 12px; }
+  .toast { max-width: none; }
+
+  .login-card { width: 100%; padding: 20px; }
+  .center { margin-top: 48px; }
+}

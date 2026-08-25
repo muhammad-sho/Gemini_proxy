@@ -159,7 +159,7 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create a client key</button>
         </div>
       ) : (
-        <table className="table">
+        <div className="table-scroll"><table className="table">
           <thead>
             <tr><th>Label</th><th>Models</th><th>Groups</th><th>Created</th><th /></tr>
           </thead>
@@ -202,7 +202,7 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
 
       {(showModal || editing) && (

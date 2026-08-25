@@ -145,7 +145,7 @@ export function SettingsPage() {
       {!audit || audit.logs.length === 0 ? (
         <p className="hint">Nothing recorded yet.</p>
       ) : (
-        <table className="table">
+        <div className="table-scroll"><table className="table">
           <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead>
           <tbody>
             {audit.logs.map(l => (
@@ -157,7 +157,7 @@ export function SettingsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       )}
     </section>
   );
