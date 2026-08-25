@@ -238,3 +238,10 @@ A project-wide cleanup pass ran after Wave 6 (see `CLEANUPS.md` entries 50–58)
 milestone landed, the stale cache-TTL knob and all dead code were purged, prettier was
 removed as dead tooling, and ESLint now lints both server and dashboard trees with zero
 warnings enforced.
+
+## UI refresh
+
+The dashboard was visually rebuilt as a high-contrast technical control panel: flat
+rectangular design (zero radius enforced globally), 1px borders, subtle shadows, Plus
+Jakarta Sans / JetBrains Mono (self-bundled), light+dark themes with a persisted toggle,
+and functional-only semantic colors. No component logic changed.

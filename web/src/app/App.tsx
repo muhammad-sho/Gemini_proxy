@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { api, type AdminState } from "../api/client.js";
 import { useApp } from "./../auth/useAuth.js";
+import { applyTheme, currentTheme, type Theme } from "../theme.js";
 import { OverviewPage } from "../features/overview/OverviewPage.js";
 import { ClientKeysPage } from "../features/client-keys/ClientKeysPage.js";
 import { ProviderCredentialsPage } from "../features/provider-credentials/ProviderCredentialsPage.js";
@@ -15,6 +16,13 @@ export function App() {
   const { authed, login, logout } = useApp();
   const [tab, setTab] = useState<Tab>("Overview");
   const [state, setState] = useState<AdminState | null>(null);
+  const [theme, setTheme] = useState<Theme>(currentTheme());
+
+  const toggleTheme = () => {
+    const next: Theme = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    applyTheme(next);
+  };
 
   const reload = useCallback(async () => {
     try {
@@ -58,6 +66,13 @@ export function App() {
             </button>
           ))}
         </nav>
+        <button
+          className="btn btn-ghost"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+        >
+          {theme === "dark" ? "LIGHT" : "DARK"}
+        </button>
         <button className="btn btn-ghost" onClick={() => void logout()}>Log out</button>
       </header>
 

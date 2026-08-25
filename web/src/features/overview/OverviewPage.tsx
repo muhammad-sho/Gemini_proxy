@@ -75,8 +75,8 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
               <tr key={m.modelId}>
                 <td><code>{m.modelId}</code></td>
                 <td><span className={pillClass(m.requests)}>{m.requests}</span></td>
-                <td>{m.promptTokens.toLocaleString()}</td>
-                <td>{m.completionTokens.toLocaleString()}</td>
+                <td className="mono">{m.promptTokens.toLocaleString()}</td>
+                <td className="mono">{m.completionTokens.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -97,7 +97,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
                 <td><code>{c.model_id}</code></td>
                 <td><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
                 <td>{c.cooldown_reason ?? "—"}</td>
-                <td title={new Date(c.cooldown_until).toLocaleString()}>
+                <td className="mono" title={new Date(c.cooldown_until).toLocaleString()}>
                   {Math.max(0, Math.round((c.cooldown_until - Date.now()) / 1000))}s
                 </td>
               </tr>

@@ -150,10 +150,10 @@ export function SettingsPage() {
           <tbody>
             {audit.logs.map(l => (
               <tr key={l.id}>
-                <td title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+                <td className="mono" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
                 <td><span className="pill pill-idle">{l.action}</span></td>
                 <td><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
-                <td>{l.ipAddress ?? "—"}</td>
+                <td className="mono">{l.ipAddress ?? "—"}</td>
               </tr>
             ))}
           </tbody>

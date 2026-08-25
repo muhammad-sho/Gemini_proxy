@@ -111,12 +111,12 @@ export function LogsPage() {
               onClick={() => void openDetail(l.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(l.id); } }}
             >
-              <td title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+              <td className="mono" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
               <td><code>{l.modelId ?? "—"}</code></td>
-              <td>{l.responseStatus ?? "—"}</td>
+              <td className="mono">{l.responseStatus ?? "—"}</td>
               <td><span className={outcomeClass(l.finalOutcome)}>{l.finalOutcome}</span></td>
-              <td>{l.attemptNumber}/{l.totalAttempts}</td>
-              <td>{l.latencyMs != null ? `${l.latencyMs}ms` : "—"}</td>
+              <td className="mono">{l.attemptNumber}/{l.totalAttempts}</td>
+              <td className="mono">{l.latencyMs != null ? `${l.latencyMs}ms` : "—"}</td>
             </tr>
           ))}
           {!loading && logs.length === 0 && (

@@ -118,3 +118,9 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 | 56 | `src/config/env.ts` | Removed `resetConfig()` | Zero-reference export | Leftover sweep |
 | 57 | `src/shared/errors.ts` (new), `routing.service.ts`, `admin.routes.ts` | `errMessage(err)` helper consolidated into shared module; duplicate local copies deleted | Two identical private helpers | DRY |
 | 58 | `README.md`, `proposed-plan.md` | Staleness fixes: model-discovery bullet still claimed a local cache; dashboard feature list said "model cache"; architecture tree comment referenced the removed cache service; status-snapshot test counts refreshed | Outdated docs claims | Docs accuracy |
+
+## Visual overhaul — technical control-panel theme (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 59 | `global.css` (full rewrite), `theme.ts` (new), `main.tsx`, `App.tsx`, mono classes on data cells, font devDeps | Complete visual redesign per spec: flat rectangular surfaces (single global `border-radius:0`), 1px borders + subtle shadows, centered 1120px shell with bordered page sections, dense bordered tables, uppercase micro-labels, bold-weight hierarchy; Plus Jakarta Sans Variable (UI) + JetBrains Mono Variable (code/keys/metrics/timestamps) bundled locally as woff2 so CSP stays `'self'`; light theme per spec tokens plus full dark counterpart (`data-theme` on `<html>`, persisted in localStorage, OS preference default, topbar DARK/LIGHT toggle); semantic emerald/amber/rose reserved for status badges, cooldowns and errors | Old dark-only GitHub-ish palette, rounded cards/pills/chips/modals, system-font stack, blue accent | User-directed visual update |
