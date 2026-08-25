@@ -584,12 +584,26 @@ describe("split gateway surfaces", () => {
       headers: { cookie: adminCookie }
     });
     expect(summary.statusCode).toBe(200);
-    const body = json<{ days: number; models: Array<{ modelId: string; requests: number; promptTokens: number }> }>(summary);
+    const body = json<{
+      days: number;
+      keys: Array<{ id: string; label: string }>;
+      models: Array<{ id: string }>;
+      cells: Array<{ providerId: string; modelId: string; requests: number }>;
+      states: Array<{ credentialId: string; modelId: string; state: string; errorCount: number }>;
+    }>(summary);
     expect(body.days).toBe(7);
-    const flash = body.models.find(m => m.modelId === "gemini-2.0-flash");
-    expect(flash).toBeDefined();
-    expect(flash!.requests).toBeGreaterThan(0);
-    expect(flash!.promptTokens).toBeGreaterThan(0);
+    expect(body.keys.length).toBeGreaterThanOrEqual(2);
+    expect(body.models.some(m => m.id === "gemini-2.0-flash")).toBe(true);
+
+    const flashCell = body.cells.find(c => c.modelId === "gemini-2.0-flash");
+    expect(flashCell).toBeDefined();
+    expect(flashCell!.requests).toBeGreaterThan(0);
+
+    const goodState = body.states.find(
+      st => st.credentialId === goodCredentialId && st.modelId === "gemini-2.0-flash"
+    );
+    expect(goodState).toBeDefined();
+    expect(["ready", "cooling"]).toContain(goodState!.state);
   });
 
   it("upgrades to __Host- cookies over HTTPS and leaves HSTS off by default", async () => {

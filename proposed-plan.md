@@ -226,7 +226,8 @@ Dashboard tabs in README (Overview/Providers picker/Groups/Logs detail).
 
 1. **Wave 1 — stop the bleeding (P0):** A1, A2, A3, B1 (+tests) — ✅ DONE. Every deprecated/changed item is logged in `CLEANUPS.md`.
 2. **Wave 2 — trust the numbers & the UX:** B2, B3, C1–C4, G1 — ✅ DONE (see `CLEANUPS.md`).
-3. **Wave 3 — hardening:** A4 ✅(done in W2), A5 ✅, A6 ✅, E1 ✅, E2 ✅(partial: global knob + per-key buckets deferred), E3 ✅, G2 — see `CLEANUPS.md`. 5. **Wave 5 — frontend tests + limit knobs:** G2 ✅ (Modal/ConfirmButton/Settings + relTime util), E2 ✅ (rateLimitPerMinute boot knob + clientKeyRatePerMinute live per-key buckets). 6. **Wave 6 — countTokens + leftover sweep:** D2 ✅, dead-code/stale-setting purge ✅. Remaining open: D1 streaming, H3 screenshots.
+3. **Wave 3 — hardening:** A4 ✅(done in W2), A5 ✅, A6 ✅, E1 ✅, E2 ✅(partial: global knob + per-key buckets deferred), E3 ✅, G2 — see `CLEANUPS.md`. 5. **Wave 5 — frontend tests + limit knobs:** G2 ✅ (Modal/ConfirmButton/Settings + relTime util), E2 ✅ (rateLimitPerMinute boot knob + clientKeyRatePerMinute live per-key buckets). 6. **Wave 6 — countTokens + leftover sweep:** D2 ✅, dead-code/stale-setting purge ✅.
+7. **Overview usage matrix** — key×model grid with state-tinted cells ✅. Remaining open: D1 streaming, H3 screenshots.
 4. **Wave 4 — polish & growth:** B4, C5, C6, G3, G4, H*, F*.
 5. **Later milestones (unchanged):** D1 streaming, D2 countTokens — only after Wave 3.
 

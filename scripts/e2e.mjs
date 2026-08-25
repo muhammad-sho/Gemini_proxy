@@ -160,8 +160,9 @@ try {
 
   // Metrics, logs, audit trail
   const usage = await (await api("GET", "/api/admin/v1/usage-summary?days=1")).json();
-  const flash = usage.models.find(m => m.modelId === "gemini-2.0-flash");
-  check("usage summary aggregates tokens", flash && flash.requests >= 2 && flash.promptTokens > 0);
+  const flashCell = usage.cells.find(c => c.modelId === "gemini-2.0-flash");
+  check("usage matrix aggregates per key×model", flashCell && flashCell.requests >= 2);
+  check("usage summary carries live states", Array.isArray(usage.states) && usage.states.length > 0);
 
   const logs = await (await api("GET", "/api/admin/v1/logs?limit=5")).json();
   check("request logs recorded", logs.total > 0);

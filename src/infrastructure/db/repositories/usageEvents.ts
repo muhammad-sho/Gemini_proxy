@@ -25,16 +25,11 @@ export class UsageEventRepository {
     ORDER BY created_at DESC
     LIMIT ?
   `);
-  private stmtAggregate = this.db.prepare(`
-    SELECT model_id,
-           COUNT(*) AS requests,
-           COALESCE(SUM(request_tokens), 0) AS prompt_tokens,
-           COALESCE(SUM(response_tokens), 0) AS completion_tokens
+  private stmtAggregateByPair = this.db.prepare(`
+    SELECT provider_id, model_id, COUNT(*) AS requests
     FROM usage_events
     WHERE created_at >= ?
-    GROUP BY model_id
-    ORDER BY requests DESC
-    LIMIT 100
+    GROUP BY provider_id, model_id
   `);
   private stmtPrune = this.db.prepare(`
     DELETE FROM usage_events
@@ -66,22 +61,12 @@ export class UsageEventRepository {
     return this.stmtPrune.run(maxEntries).changes;
   }
 
-  aggregateByModel(sinceSec: number): Array<{
-    modelId: string;
-    requests: number;
-    promptTokens: number;
-    completionTokens: number;
-  }> {
-    return (this.stmtAggregate.all(sinceSec) as Array<{
+  /** Per credential×model request counts inside the window (matrix cells). */
+  aggregateByPair(sinceSec: number): Array<{ providerId: string; modelId: string; requests: number }> {
+    return (this.stmtAggregateByPair.all(sinceSec) as Array<{
+      provider_id: string;
       model_id: string;
       requests: number;
-      prompt_tokens: number;
-      completion_tokens: number;
-    }>).map(r => ({
-      modelId: r.model_id,
-      requests: r.requests,
-      promptTokens: r.prompt_tokens,
-      completionTokens: r.completion_tokens
-    }));
+    }>).map(r => ({ providerId: r.provider_id, modelId: r.model_id, requests: r.requests }));
   }
 }

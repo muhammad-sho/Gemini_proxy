@@ -43,9 +43,23 @@ export interface AuditEntry {
   createdAt: number;
 }
 
+export interface UsageKey { id: string; label: string }
+export interface UsageCell { providerId: string; modelId: string; requests: number }
+export interface UsageState {
+  credentialId: string;
+  modelId: string;
+  state: "ready" | "cooling" | "disabled";
+  cooldownUntil: number | null;
+  cooldownReason: string | null;
+  errorCount: number;
+}
+
 export interface UsageSummary {
   days: 1 | 7;
-  models: Array<{ modelId: string; requests: number; promptTokens: number; completionTokens: number }>;
+  keys: UsageKey[];
+  models: Array<{ id: string }>;
+  cells: UsageCell[];
+  states: UsageState[];
   generatedAt: number;
 }
 

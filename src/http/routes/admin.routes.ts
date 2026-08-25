@@ -63,10 +63,29 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       const q = req.query as { days?: string };
       const days = q.days === "7" ? 7 : 1;
       const sinceSec = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+
+      const credentials = deps.providerCredentialRepo.findAll();
       return {
         days,
-        models: deps.usageRepo.aggregateByModel(sinceSec),
-        generatedAt: Math.floor(Date.now() / 1000)
+        generatedAt: Math.floor(Date.now() / 1000),
+        // Matrix axes — dynamic: rows = models, columns = credentials.
+        keys: credentials.map(c => ({ id: c.id, label: c.label })),
+        models: deriveModelCatalog(credentials),
+        cells: deps.usageRepo.aggregateByPair(sinceSec),
+        // Live per credential×model health for cell coloring.
+        states: (deps.db.prepare(
+          "SELECT credential_id, model_id, state, cooldown_until, cooldown_reason, error_count FROM model_credential_state"
+        ).all() as Array<{
+          credential_id: string; model_id: string; state: string;
+          cooldown_until: number | null; cooldown_reason: string | null; error_count: number;
+        }>).map(r => ({
+          credentialId: r.credential_id,
+          modelId: r.model_id,
+          state: r.state,
+          cooldownUntil: r.cooldown_until,
+          cooldownReason: r.cooldown_reason,
+          errorCount: r.error_count
+        }))
       };
     });
 
