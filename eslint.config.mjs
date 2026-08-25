@@ -12,6 +12,6 @@ export default tseslint.config(
     }
   },
   {
-    ignores: ["dist/**", "node_modules/**", "web/**"]
+    ignores: ["dist/**", "dist-web/**", "node_modules/**", "scripts/**"]
   }
 );

@@ -11,8 +11,8 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Automatic cooldown when a key hits rate limits, transient errors, or daily quota
 * Upstream responses relayed verbatim (Gemini gateway) or translated faithfully into OpenAI shape (OpenAI gateway)
 * Per-key and per-model usage tracking in a web dashboard
-* Model discovery from Google, served from a local cache so `/v1beta/models` and `/v1/models` answer instantly
-* Web dashboard: overview stats, client keys, provider credentials, model cache, request logs with timeline and payload inspection
+* Model discovery derived from the models you select per provider key — `/v1beta/models` and `/v1/models` always reflect what can actually be routed
+* Web dashboard: overview stats, client keys, provider credentials, routing groups, request logs with timeline and payload inspection
 * **Isolated surfaces**: dashboard/admin can run localhost-only while only the gateway ports are exposed publicly
 * SQLite storage — no external database needed
 * Provider credentials encrypted at rest (AES-256-GCM)
@@ -72,7 +72,7 @@ src/
 │   ├── auth/                admin sessions
 │   ├── providers/           adapter interface + error classification
 │   └── routing/             cooldown policies + key selection ordering
-├── application/gateway/     routing service (retries/deadline/logging), model cache,
+├── application/gateway/     routing service (retries/deadline/logging), live provider probe,
 │                            OpenAI ⇄ canonical translation
 └── http/
     ├── server.ts            composition root building the three servers

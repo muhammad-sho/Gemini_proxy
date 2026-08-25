@@ -12,10 +12,7 @@ import {
 } from "../../shared/validation.js";
 import { settingsUpdateSchema } from "./../../domain/settings/settingsService.js";
 import { deriveModelCatalog, derivePairs } from "../../application/gateway/catalog.js";
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { errMessage } from "../../shared/errors.js";
 
 const OUTCOMES = ["success", "error", "timeout", "aborted", "no_keys"] as const;
 type Outcome = (typeof OUTCOMES)[number];

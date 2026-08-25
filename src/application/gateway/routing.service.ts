@@ -10,6 +10,7 @@ import type { RequestLogRepository } from "../../infrastructure/db/repositories/
 import { randomUUID } from "crypto";
 import type { Logger } from "../../infrastructure/logging/logger.js";
 import { RESPONSE_LIMIT_BYTES } from "../../shared/constants.js";
+import { errMessage } from "../../shared/errors.js";
 import type { ProxySettings, SettingsService } from "../../domain/settings/settingsService.js";
 import type { SelectionStrategy } from "./../../domain/routing/keySelection.js";
 
@@ -448,10 +449,6 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
 
 function truncate(text: string, maxChars: number): string {
   return text.slice(0, maxChars);
-}
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 interface UsageMetadataShape {

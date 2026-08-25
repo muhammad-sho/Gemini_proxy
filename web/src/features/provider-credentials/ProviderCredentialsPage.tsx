@@ -100,7 +100,6 @@ function CredentialModal({
     window.clearTimeout(debounceRef.current);
     debounceRef.current = window.setTimeout(() => { void fetchModels(); }, 600);
     return () => window.clearTimeout(debounceRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing?.id, provider, apiKey, baseUrl]);
 
   const toggle = (id: string) => {

@@ -108,3 +108,13 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 
 ### Still open (unchanged)
 * D1 true streaming (needs focused design work), H3 screenshots (browser env), G2 remainder none.
+
+## Project-wide cleanup pass (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 54 | `.prettierrc`, `package.json` | Prettier removed entirely | `.prettierrc`, `prettier` devDependency, `format` script | Dead tooling: config existed but nothing ever ran it (CI/quality handled by ESLint) |
+| 55 | `eslint.config.mjs`, `package.json`, three web files | Lint scope extended to `web/src` (was explicitly ignored); fixed the three latent findings it surfaced: unused `toast` destructure in `App.tsx`, unused `waitFor` import in ConfirmButton test, stale `react-hooks/exhaustive-deps` disable directive referencing an unconfigured rule. `scripts/**` ignored so the standalone e2e runner may use console output | **Deprecated:** blanket `web/**` lint exclusion | Full-tree quality gate |
+| 56 | `src/config/env.ts` | Removed `resetConfig()` | Zero-reference export | Leftover sweep |
+| 57 | `src/shared/errors.ts` (new), `routing.service.ts`, `admin.routes.ts` | `errMessage(err)` helper consolidated into shared module; duplicate local copies deleted | Two identical private helpers | DRY |
+| 58 | `README.md`, `proposed-plan.md` | Staleness fixes: model-discovery bullet still claimed a local cache; dashboard feature list said "model cache"; architecture tree comment referenced the removed cache service; status-snapshot test counts refreshed | Outdated docs claims | Docs accuracy |

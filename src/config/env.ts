@@ -27,7 +27,3 @@ export function getConfig(): EnvConfig {
   }
   return cachedConfig;
 }
-
-export function resetConfig(): void {
-  cachedConfig = null;
-}

@@ -12,7 +12,7 @@ const TABS = ["Overview", "Client keys", "Providers", "Groups", "Logs", "Setting
 type Tab = (typeof TABS)[number];
 
 export function App() {
-  const { authed, login, logout, toast } = useApp();
+  const { authed, login, logout } = useApp();
   const [tab, setTab] = useState<Tab>("Overview");
   const [state, setState] = useState<AdminState | null>(null);
 

@@ -1,7 +1,8 @@
 # Gemini Proxy — Review & Improvement Roadmap
 
-Status snapshot: the modular rebuild is complete and verified (66/66 tests, `npm run check`
-green). Three isolated surfaces (Gemini :18770, OpenAI :18771, dashboard :18765), zero-config
+Status snapshot: the modular rebuild is complete and verified (105/105 tests across server,
+integration and dashboard suites, `npm run check` green with zero-warning lint over both
+trees, dependency-free e2e happy path, and enforced coverage floors). Three isolated surfaces (Gemini :18770, OpenAI :18771, dashboard :18765), zero-config
 first-run setup, live model probing, pair-based routing groups, runtime Settings tab,
 env-free deployment, single `./data` folder for backups.
 
@@ -228,3 +229,12 @@ Dashboard tabs in README (Overview/Providers picker/Groups/Logs detail).
 3. **Wave 3 — hardening:** A4 ✅(done in W2), A5 ✅, A6 ✅, E1 ✅, E2 ✅(partial: global knob + per-key buckets deferred), E3 ✅, G2 — see `CLEANUPS.md`. 5. **Wave 5 — frontend tests + limit knobs:** G2 ✅ (Modal/ConfirmButton/Settings + relTime util), E2 ✅ (rateLimitPerMinute boot knob + clientKeyRatePerMinute live per-key buckets). 6. **Wave 6 — countTokens + leftover sweep:** D2 ✅, dead-code/stale-setting purge ✅. Remaining open: D1 streaming, H3 screenshots.
 4. **Wave 4 — polish & growth:** B4, C5, C6, G3, G4, H*, F*.
 5. **Later milestones (unchanged):** D1 streaming, D2 countTokens — only after Wave 3.
+
+---
+
+## Cleanup pass log
+
+A project-wide cleanup pass ran after Wave 6 (see `CLEANUPS.md` entries 50–58): countTokens
+milestone landed, the stale cache-TTL knob and all dead code were purged, prettier was
+removed as dead tooling, and ESLint now lints both server and dashboard trees with zero
+warnings enforced.
