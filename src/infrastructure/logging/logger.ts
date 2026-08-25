@@ -1,10 +1,10 @@
 import pino from "pino";
 
-export function createLogger(nodeEnv: string): pino.Logger {
+export function createLogger(nodeEnv: string, logLevel?: string): pino.Logger {
   const isDevelopment = nodeEnv === "development";
 
   return pino({
-    level: isDevelopment ? "debug" : "info",
+    level: logLevel ?? (isDevelopment ? "debug" : "info"),
     transport: isDevelopment
       ? {
           target: "pino-pretty",

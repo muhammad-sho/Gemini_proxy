@@ -1,35 +1,40 @@
+# All configuration lives in .env (copy .env.example). This file only wires
+# the container: volume, port publishing, and the few settings that MUST
+# differ inside the container.
+
 services:
   gemini-proxy:
     image: ghcr.io/muhammad-sho/gemini-proxy:latest
     container_name: gemini-proxy
     restart: unless-stopped
-    ports:
-      # Gemini-protocol gateway — expose publicly (this is the API surface).
-      - "18770:18770"
-      # OpenAI-protocol gateway — expose publicly (this is the API surface).
-      - "18771:18771"
-      # Dashboard/admin — host-side 127.0.0.1 prefix keeps it reachable from
-      # this machine (and any reverse proxy on it) only. Drop the prefix ONLY
-      # if you fully trust everyone on the network, or tunnel via SSH instead.
-      - "127.0.0.1:18765:18765"
-    volumes:
-      - ./data:/data:Z
+
+    # Forward every variable in .env into the container. Optional, so an
+    # inline `SETUP_TOKEN=... docker compose up` also works without a file.
+    env_file:
+      - path: .env
+        required: false
+
     environment:
+      # Container constants — these intentionally override .env: Docker can
+      # only publish ports to processes bound on 0.0.0.0, so all three
+      # surfaces bind every interface HERE; actual exposure is decided by the
+      # host-side address in the `ports` block below.
       NODE_ENV: production
       DB_PATH: /data/gemini-proxy.db
-      # Inside the container all three surfaces must bind 0.0.0.0 for Docker's
-      # port publishing to reach them; restrict exposure via the ports block
-      # above (host-side binding), not by setting ADMIN_HOST to loopback here.
       GATEWAY_HOST: 0.0.0.0
       ADMIN_HOST: 0.0.0.0
-      GEMINI_PORT: 18770
-      OPENAI_PORT: 18771
-      ADMIN_PORT: 18765
-      # Admin login token for the dashboard (required)
-      SETUP_TOKEN: ${SETUP_TOKEN:?set SETUP_TOKEN in .env}
-      # Encrypts provider API keys at rest (required in production).
-      # Generate with: openssl rand -base64 32
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      # Fail fast at `up` when the admin password is missing.
+      SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN in .env (see .env.example)}
 
-# Backups: stop the container (or use SQLite's .backup command) and copy ./data
+    volumes:
+      - ./data:/data:Z
+
+    ports:
+      # Format: <host-ip>:<host-port>:<container-port>. Edit the left side to
+      # limit exposure; defaults below match the values in .env.
+      - "${GEMINI_PORT:-18770}:${GEMINI_PORT:-18770}"          # Gemini API (public)
+      - "${OPENAI_PORT:-18771}:${OPENAI_PORT:-18771}"          # OpenAI API (public)
+      - "127.0.0.1:${ADMIN_PORT:-18765}:${ADMIN_PORT:-18765}"  # Dashboard/admin (local host only)
+
+# Backups: stop the container (or use sqlite3 ".backup ...") and copy ./data,
 # e.g. sqlite3 data/gemini-proxy.db ".backup 'data/backup-$(date +%F).db'"

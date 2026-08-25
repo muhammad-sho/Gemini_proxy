@@ -5,7 +5,7 @@ import { createLogger } from "./infrastructure/logging/logger.js";
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const logger = createLogger(config.nodeEnv);
+  const logger = createLogger(config.nodeEnv, config.logLevel);
 
   logger.info(
     {

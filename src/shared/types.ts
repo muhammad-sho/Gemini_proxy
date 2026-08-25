@@ -17,6 +17,7 @@ export interface EnvConfig {
   maxResponseBytes: number;
   trustProxy: boolean;
   nodeEnv: "development" | "production" | "test";
+  logLevel?: "fatal" | "error" | "warn" | "info" | "debug" | "trace";
 }
 
 export const envSchema = {
@@ -37,5 +38,6 @@ export const envSchema = {
   maxBodyBytes: { default: 10485760, coerce: true },
   maxResponseBytes: { default: 52428800, coerce: true },
   trustProxy: { default: false, coerce: true },
-  nodeEnv: { default: "development" }
+  nodeEnv: { default: "development" },
+  logLevel: { default: undefined }
 } as const;

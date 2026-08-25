@@ -35,4 +35,10 @@ describe("validateEnv", () => {
   it("rejects non-numeric admin port", () => {
     expect(() => validateEnv({ ...base, ADMIN_PORT: "nope" })).toThrow(/ADMIN_PORT/);
   });
+
+  it("accepts a valid LOG_LEVEL and rejects unknown ones", () => {
+    expect(validateEnv({ ...base, LOG_LEVEL: "debug" }).logLevel).toBe("debug");
+    expect(validateEnv(base).logLevel).toBeUndefined();
+    expect(() => validateEnv({ ...base, LOG_LEVEL: "loud" })).toThrow(/LOG_LEVEL/);
+  });
 });

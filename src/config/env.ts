@@ -23,7 +23,8 @@ export function loadConfig(): EnvConfig {
     MAX_BODY_BYTES: process.env.MAX_BODY_BYTES,
     MAX_RESPONSE_BYTES: process.env.MAX_RESPONSE_BYTES,
     TRUST_PROXY: process.env.TRUST_PROXY,
-    NODE_ENV: process.env.NODE_ENV
+    NODE_ENV: process.env.NODE_ENV,
+    LOG_LEVEL: process.env.LOG_LEVEL
   };
 
   cachedConfig = validateEnv(env);

@@ -68,12 +68,17 @@ You only need Docker installed.
 
 ```bash
 mkdir gemini-proxy && cd gemini-proxy
-curl -fsSL -o docker-compose.yml https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
-SETUP_TOKEN=choose-a-long-secret APP_ENCRYPTION_KEY=$(openssl rand -base64 32) docker compose up -d
+curl -fsSL -O https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
+curl -fsSL -o .env https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/.env.example
+# edit .env: set SETUP_TOKEN and APP_ENCRYPTION_KEY (openssl rand -base64 32);
+# every other value has a sane default
+docker compose up -d
 ```
 
-* `SETUP_TOKEN` — the admin password used to log into the dashboard.
+* `SETUP_TOKEN` — the admin password used to log into the dashboard (required).
 * `APP_ENCRYPTION_KEY` — encrypts the Google API keys you add later (required in production).
+
+All other settings — ports, routing behavior, cache, limits — live in `.env` too; the compose file only wires volumes and port publishing. Prefer no file at all? `SETUP_TOKEN=... APP_ENCRYPTION_KEY=... docker compose up -d` works as well.
 
 Check `docker compose logs -f`, then open the dashboard at `http://localhost:18765` (the compose file binds it to loopback on the host — reach it via SSH tunnel from elsewhere, e.g. `ssh -L 18765:127.0.0.1:18765 your-server`).
 
@@ -220,7 +225,7 @@ The database holds the admin password hash, client key hashes, usage counters, c
 
 # Environment Variables
 
-See `.env.example`. Highlights:
+See `.env.example`. It is the single source of configuration: Docker Compose reads it automatically when placed next to `docker-compose.yml`, and running from source consumes the same variables. Highlights:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
@@ -234,6 +239,7 @@ See `.env.example`. Highlights:
 | `KEY_LOOP_DEADLINE_MS` | `30000` | Total budget for all attempts |
 | `REQUEST_TIMEOUT_MS` | `60000` | Per-attempt upstream timeout |
 | `MODELS_CACHE_TTL_HOURS` | `24` | Model cache freshness |
+| `LOG_LEVEL` | `info` (`debug` in dev) | `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
 | `MAX_LOG_ENTRIES` | `1000` | Request-log retention (oldest pruned) |
 | `LOG_BODY_MAX_BYTES` | `65536` | Stored bytes per request/response body |
 | `MAX_BODY_BYTES` / `MAX_RESPONSE_BYTES` | 10 MB / 50 MB | Payload limits |

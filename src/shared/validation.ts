@@ -24,7 +24,8 @@ export const envSchema = z.object({
     .string()
     .optional()
     .transform(v => v === "true" || v === "1"),
-  NODE_ENV: z.enum(["development", "production", "test"]).default("development")
+  NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).optional()
 });
 
 export function validateEnv(env: Record<string, string | undefined>): EnvConfig {
@@ -52,7 +53,8 @@ export function validateEnv(env: Record<string, string | undefined>): EnvConfig 
     maxBodyBytes: d.MAX_BODY_BYTES,
     maxResponseBytes: d.MAX_RESPONSE_BYTES,
     trustProxy: d.TRUST_PROXY,
-    nodeEnv: d.NODE_ENV
+    nodeEnv: d.NODE_ENV,
+    logLevel: d.LOG_LEVEL
   };
 }
 
