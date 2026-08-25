@@ -39,8 +39,6 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
     const stateByKey = new Map<string, UsageSummary["states"][number]>();
     for (const st of summary.states) stateByKey.set(`${st.credentialId}|${st.modelId}`, st);
 
-    const labelOf = (id: string) => summary.keys.find(k => k.id === id)?.label ?? id;
-
     const rows = modelRows.map(modelId => ({
       modelId,
       cells: keyColumns.map(col => {
@@ -54,7 +52,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
       })
     }));
 
-    return { keyColumns, rows, labelOf };
+    return { keyColumns, rows };
   }, [summary]);
 
   return (

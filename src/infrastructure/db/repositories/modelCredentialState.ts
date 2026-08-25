@@ -48,6 +48,11 @@ export class ModelCredentialStateRepository {
     SET avg_latency_ms = ?
     WHERE model_id = ? AND credential_id = ?
   `);
+  private stmtRecordSuccess = this.db.prepare(`
+    UPDATE model_credential_state
+    SET error_count = 0
+    WHERE model_id = ? AND credential_id = ?
+  `);
   private stmtClearCooldowns = this.db.prepare(`
     UPDATE model_credential_state
     SET state = 'ready', cooldown_until = NULL, cooldown_reason = NULL
@@ -68,6 +73,14 @@ export class ModelCredentialStateRepository {
 
   incrementError(modelId: string, credentialId: string, message: string): void {
     this.stmtIncrementError.run(modelId, credentialId, Date.now(), message);
+  }
+
+  /**
+   * Called after a successful attempt so error_count tracks *consecutive*
+   * failures — a recovered key stops reading as "failing" in the UI.
+   */
+  recordSuccess(modelId: string, credentialId: string): void {
+    this.stmtRecordSuccess.run(modelId, credentialId);
   }
 
   /** Exponential moving average of successful attempt latencies (30% new sample). */

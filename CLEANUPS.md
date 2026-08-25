@@ -130,3 +130,9 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 | # | File | Change | Deprecated / removed | Why |
 |---|------|--------|----------------------|-----|
 | 60 | `usageEvents.ts` (`aggregateByPair`), `admin.routes.ts` (`/usage-summary` reshaped), `client.ts`, `OverviewPage.tsx`, `global.css` (+tests, e2e) | Usage section is now a dynamic matrix: rows = models, columns = provider keys, cells = request counts per key×model in the selected window, tinted by the pair's live state (emerald active / amber cooling / rose failing / muted no-requests). Sticky model column + header, horizontal scroll for many keys, legend row; both axes fully dynamic. Endpoint now returns `keys[]`, `models[]`, `cells[]`, `states[]` | **Deprecated:** flat per-model `models[]` summary and its token columns on this view; `aggregateByModel()` repo method removed (token data still recorded in usage_events) | User-directed visual/functional update |
+
+## Review fixes — usage matrix follow-up (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 61 | `modelCredentialState.ts`, `routing.service.ts`, `global.css`, `OverviewPage.tsx` (+int test) | Code-review fixes: (a) success path now calls `recordSuccess()` so `error_count` tracks consecutive failures — recovered pairs stop rendering rose "failing" in the matrix; (b) `.matrix-wrap` got `max-height:480px; overflow:auto` so the sticky header actually engages on tall tables; (c) removed unused `labelOf` helper. Noted: matrix shows only current credentials/models — historical usage under deleted entities stays in `usage_events`/logs but is intentionally not displayed here | — | Post-commit review findings 1–3; finding 4 documented as intended |

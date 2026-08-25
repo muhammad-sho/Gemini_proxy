@@ -604,6 +604,8 @@ describe("split gateway surfaces", () => {
     );
     expect(goodState).toBeDefined();
     expect(["ready", "cooling"]).toContain(goodState!.state);
+    // Successful attempts must reset the consecutive-error counter.
+    expect(goodState!.errorCount).toBe(0);
   });
 
   it("upgrades to __Host- cookies over HTTPS and leaves HSTS off by default", async () => {

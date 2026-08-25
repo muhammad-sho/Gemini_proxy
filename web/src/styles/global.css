@@ -258,7 +258,7 @@ legend { color: var(--text-muted); font-size: 11px; font-weight: 800; letter-spa
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* --------------------------------------------------- usage matrix (B4 view) */
-.matrix-wrap { overflow-x: auto; border: 1px solid var(--border); }
+.matrix-wrap { overflow: auto; max-height: 480px; border: 1px solid var(--border); }
 .matrix { margin-top: 0; border: none; min-width: 100%; }
 .matrix th, .matrix td { border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); }
 .matrix thead th:last-child, .matrix tbody td:last-child { border-right: none; }

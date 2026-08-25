@@ -184,6 +184,7 @@ export class RoutingService {
 
         if (result.status >= 200 && result.status < 300) {
           push("attempt_success", { attempt, status: result.status });
+          this.stateRepo.recordSuccess(input.modelId, credential.id);
           this.stateRepo.recordLatency(input.modelId, credential.id, Date.now() - attemptStartedAt);
           const tokens = extractUsageTokens(result.headers["content-type"], result.body);
           this.recordUsage(input, credential.id, result.status, Date.now() - startedAt, null, tokens);
