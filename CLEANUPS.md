@@ -83,3 +83,16 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 * **G2** frontend component tests (Testing Library) — next wave.
 * **H3** screenshots — needs a browser environment.
 * **E2 remainder** global/per-client-key rate-limit knobs.
+
+## Wave 5 — frontend test suite + rate-limit knobs (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 45 | `web/src/lib/relTime.ts` (new) + `LogsPage/SettingsPage` | Shared relative-time helper extracted and unit-tested (`relTime.test.ts`) | Two duplicated inline `relTime` copies | G2 support / DRY |
+| 46 | devDependencies: `jsdom`, `@testing-library/react`, `@testing-library/dom` (RTL v16 requires dom as explicit peer — install with `--legacy-peer-deps` per repo convention) + vitest config picks up `web/src/**/*.test.tsx` (jsdom via docblock) | Frontend component testing now possible in the existing Vitest runner | — | G2 |
+| 47 | New suites: `Modal.test.tsx` (title/Escape/backdrop/focus-trap/restore), `ConfirmButton.test.tsx` (arm→confirm/cancel/warning-aria/error-toast via `act`), `SettingsPage.test.tsx` (clamp-to-bounds, garbage ignored, save payload) | First dashboard component coverage; Modal focus-trap visibility filter made layout-API-free so it works in jsdom too | — | G2/C2/C3 |
+| 48 | `settingsService.ts` + `clientAccess.enforceClientKeyRate` + `domain/routing/clientKeyRateLimit.ts` (new) + both gateway routes + `server.ts` + Settings UI | E2 remainder: `rateLimitPerMinute` (global cap snapshot at boot) and `clientKeyRatePerMinute` fixed-window limiter per client key (0 = off), enforced on all four gateway handlers with a 429 envelope | Static hardcoded 300/min-only limiting | E2 |
+| 49 | `gateway.int`/unit suites extended: limiter windows/independence/disabled-mode cases | — | — | Coverage for #48 |
+
+### Notes
+* React 19 + RTL defers settled-state flushes for async handlers unless wrapped in `await act(async () => …)` — the ConfirmButton error-path test asserts the toast and documents this quirk instead of asserting the deferred re-render DOM.

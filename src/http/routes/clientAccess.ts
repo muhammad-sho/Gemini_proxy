@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AppDeps } from "../server.js";
 import type { ClientKey } from "../../infrastructure/db/repositories/clientKeys.js";
+import { allowClientKeyRequest } from "../../domain/routing/clientKeyRateLimit.js";
 import { hashApiKey } from "../../shared/crypto.js";
 
 /**
@@ -38,6 +39,23 @@ export function sendUnauthorized(reply: FastifyReply, requestId: string, message
   return reply.status(401).send({
     error: { code: 401, message, requestId }
   });
+}
+
+/**
+ * Per-client-key fixed-window limiter shared by both gateways.
+ * Returns true when allowed; otherwise sends the 429 and returns false.
+ */
+export function enforceClientKeyRate(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  clientKeyId: string,
+  limitPerMinute: number
+): boolean {
+  if (allowClientKeyRequest(clientKeyId, limitPerMinute)) return true;
+  reply.status(429).send({
+    error: { code: 429, message: "Client key rate limit exceeded", requestId: req.id }
+  });
+  return false;
 }
 
 /**

@@ -89,9 +89,9 @@ function installErrorHandler(app: AppInstance, config: EnvConfig): void {
   });
 }
 
-async function registerRateLimit(app: AppInstance): Promise<void> {
+async function registerRateLimit(app: AppInstance, maxPerMinute: number): Promise<void> {
   await app.register(rateLimit, {
-    max: 300,
+    max: maxPerMinute,
     timeWindow: "1 minute",
     keyGenerator: req => `${req.ip}`
   });
@@ -160,7 +160,9 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
       ? { maxAge: 15552000 }
       : false
   });
-  await registerRateLimit(admin);
+  // Boot-time snapshot of settings.rateLimitPerMinute (restart to apply changes).
+  const globalRateLimit = settings.all().rateLimitPerMinute;
+  await registerRateLimit(admin, globalRateLimit);
 
   await admin.register(healthRoutes(deps));
   await admin.register(authRoutes(deps), { prefix: "/api/admin/v1" });
@@ -188,7 +190,7 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
   // ---- Gemini-protocol gateway ----
   const gemini = newApp(config, logger);
   await gemini.register(helmet, { contentSecurityPolicy: false });
-  await registerRateLimit(gemini);
+  await registerRateLimit(gemini, globalRateLimit);
   await gemini.register(gatewayRoutes(deps));
   jsonNotFound(gemini);
   installErrorHandler(gemini, config);
@@ -196,7 +198,7 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
   // ---- OpenAI-protocol gateway ----
   const openai = newApp(config, logger);
   await openai.register(helmet, { contentSecurityPolicy: false });
-  await registerRateLimit(openai);
+  await registerRateLimit(openai, globalRateLimit);
   await openai.register(openaiRoutes(deps));
   jsonNotFound(openai);
   installErrorHandler(openai, config);

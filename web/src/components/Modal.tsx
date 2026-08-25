@@ -21,9 +21,13 @@ export function Modal({ title, onClose, children }: { title: string; onClose: ()
         return;
       }
       if (e.key !== "Tab") return;
-      // Focus trap: cycle Tab within the dialog.
+      // Focus trap: cycle Tab within the dialog. Visibility check avoids
+      // relying on layout APIs that are unavailable in test environments.
       const focusables = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE))
-        .filter(el => el.offsetParent !== null || el === document.activeElement);
+        .filter(el =>
+          !el.hasAttribute("hidden") &&
+          el.getAttribute("aria-hidden") !== "true"
+        );
       if (focusables.length === 0) return;
       const first = focusables[0];
       const last = focusables[focusables.length - 1];

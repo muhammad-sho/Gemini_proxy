@@ -2,18 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LogDetail, type LogRow } from "../../api/client.js";
 import { useApp } from "../../auth/useAuth.js";
 import { Modal } from "../../components/Modal.js";
+import { relTime } from "../../lib/relTime.js";
 
 const PAGE_SIZE = 25;
 
 const OUTCOMES = ["", "success", "error", "timeout", "aborted", "no_keys"] as const;
-
-function relTime(epochSec: number): string {
-  const diff = Date.now() / 1000 - epochSec;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
 
 function outcomeClass(outcome: string): string {
   if (outcome === "success") return "pill pill-ready";

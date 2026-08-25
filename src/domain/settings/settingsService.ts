@@ -14,7 +14,9 @@ export const settingsSchema = z.object({
   requestTimeoutMs: z.number().int().min(1_000).max(600_000),
   modelsCacheTtlHours: z.number().int().min(1).max(168),
   logBodyMaxBytes: z.number().int().min(1_024).max(5_242_880),
-  maxLogEntries: z.number().int().min(50).max(100_000)
+  maxLogEntries: z.number().int().min(50).max(100_000),
+  rateLimitPerMinute: z.number().int().min(10).max(10_000),
+  clientKeyRatePerMinute: z.number().int().min(0).max(100_000)
 });
 
 export type ProxySettings = z.infer<typeof settingsSchema>;
@@ -29,7 +31,9 @@ export const DEFAULT_SETTINGS: ProxySettings = {
   requestTimeoutMs: 60_000,
   modelsCacheTtlHours: 24,
   logBodyMaxBytes: 65_536,
-  maxLogEntries: 1000
+  maxLogEntries: 1000,
+  rateLimitPerMinute: 300,
+  clientKeyRatePerMinute: 120
 };
 
 const METADATA_KEY = "settings";

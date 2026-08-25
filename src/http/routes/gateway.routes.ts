@@ -5,6 +5,7 @@ import { deriveModelCatalog } from "../../application/gateway/catalog.js";
 import {
   abortOnClientDisconnect,
   authenticateClient,
+  enforceClientKeyRate,
   extractGeminiApiKey,
   isModelAllowed,
   resolveRoutePlan,
@@ -30,6 +31,9 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
       if (!clientKey) {
         const provided = extractGeminiApiKey(req) !== null;
         return sendUnauthorized(reply, req.id, provided ? "Invalid API key" : "Missing API key");
+      }
+      if (!enforceClientKeyRate(req, reply, clientKey.id, deps.settings.all().clientKeyRatePerMinute)) {
+        return reply;
       }
 
       const filtered = deriveModelCatalog(deps.providerCredentialRepo.findAll())

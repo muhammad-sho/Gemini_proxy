@@ -94,6 +94,8 @@ export interface ProxySettings {
   modelsCacheTtlHours: number;
   logBodyMaxBytes: number;
   maxLogEntries: number;
+  rateLimitPerMinute: number;
+  clientKeyRatePerMinute: number;
 }
 
 export class ApiError extends Error {

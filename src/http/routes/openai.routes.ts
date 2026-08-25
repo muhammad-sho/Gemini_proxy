@@ -12,6 +12,7 @@ import { chatCompletionCreateSchema } from "../../shared/validation.js";
 import {
   abortOnClientDisconnect,
   authenticateClient,
+  enforceClientKeyRate,
   extractBearerToken,
   isModelAllowed,
   resolveRoutePlan
@@ -38,6 +39,9 @@ export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
           openAiError(401, provided ? "Invalid API key" : "Missing API key", "authentication_error")
         );
       }
+      if (!enforceClientKeyRate(req, reply, clientKey.id, deps.settings.all().clientKeyRatePerMinute)) {
+        return reply;
+      }
 
       const data = deriveModelCatalog(deps.providerCredentialRepo.findAll())
         .filter(m => isModelAllowed(clientKey, m.id, deps))
@@ -58,6 +62,9 @@ export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
         return reply.status(401).send(
           openAiError(401, provided ? "Invalid API key" : "Missing API key", "authentication_error")
         );
+      }
+      if (!enforceClientKeyRate(req, reply, clientKey.id, deps.settings.all().clientKeyRatePerMinute)) {
+        return reply;
       }
 
       const parsed = chatCompletionCreateSchema.safeParse(req.body);

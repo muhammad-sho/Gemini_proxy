@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AuditEntry, type ProxySettings } from "../../api/client.js";
+import { relTime } from "../../lib/relTime.js";
 import { useApp } from "../../auth/useAuth.js";
 
 interface NumberField {
@@ -15,6 +16,11 @@ const ROUTING_FIELDS: NumberField[] = [
   { key: "keyLoopDeadlineMs", label: "Total deadline (ms)", hint: "Time budget for all attempts of one request (1000–600000)", min: 1000, max: 600000 },
   { key: "requestTimeoutMs", label: "Per-attempt timeout (ms)", hint: "Upstream timeout for each individual attempt (1000–600000)", min: 1000, max: 600000 },
   { key: "modelsCacheTtlHours", label: "Model cache TTL (hours)", hint: "How long cached model lists stay fresh (1–168)", min: 1, max: 168 }
+];
+
+const LIMIT_FIELDS: NumberField[] = [
+  { key: "rateLimitPerMinute", label: "Requests / IP / minute", hint: "Global per-address cap on all three surfaces; applies on restart (10–10000)", min: 10, max: 10000 },
+  { key: "clientKeyRatePerMinute", label: "Requests / client key / minute", hint: "Gateway cap per client key; 0 disables per-key limiting (0–100000)", min: 0, max: 100000 }
 ];
 
 const LOG_FIELDS: NumberField[] = [
@@ -91,6 +97,23 @@ export function SettingsPage() {
         ))}
       </form>
 
+      <h2>Limits</h2>
+      <form className="form settings-form" onSubmit={e => e.preventDefault()}>
+        {LIMIT_FIELDS.map(f => (
+          <label key={f.key}>
+            {f.label}
+            <input
+              type="number"
+              min={f.min}
+              max={f.max}
+              value={values[f.key]}
+              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
+            />
+            <small className="hint">{f.hint}</small>
+          </label>
+        ))}
+      </form>
+
       <h2>Request logs</h2>
       <form className="form settings-form" onSubmit={e => e.preventDefault()}>
         {LOG_FIELDS.map(f => (
@@ -141,10 +164,4 @@ export function SettingsPage() {
   );
 }
 
-function relTime(epochSec: number): string {
-  const diff = Date.now() / 1000 - epochSec;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
+
