@@ -146,11 +146,11 @@ Sign in at `http://localhost:18765` (or wherever `ADMIN_HOST:ADMIN_PORT` points;
 
 # API Usage
 
-Both gateways serve the same credential pool; pick whichever protocol your app already speaks and swap the URL and key. Streaming (`streamGenerateContent` / `"stream": true`) and `countTokens` are not proxied.
+Both gateways serve the same credential pool; pick whichever protocol your app already speaks and swap the URL and key. Streaming (`streamGenerateContent` / `"stream": true`) is not proxied; unsupported actions are rejected with a clear 404/400 instead of hanging.
 
 ## Gemini-protocol gateway (`:18770`)
 
-Endpoints: `GET /v1beta/models` and `POST /v1beta/models/{model}:generateContent`.
+Endpoints: `GET /v1beta/models`, `POST /v1beta/models/{model}:generateContent`, and `POST /v1beta/models/{model}:countTokens` (countTokens is served by native Gemini credentials only).
 
 The client key can be sent as `x-goog-api-key`, `Authorization: Bearer <key>`, or `?key=`:
 

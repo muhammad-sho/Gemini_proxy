@@ -91,7 +91,6 @@ export interface ProxySettings {
   keyFallbackAttempts: number;
   keyLoopDeadlineMs: number;
   requestTimeoutMs: number;
-  modelsCacheTtlHours: number;
   logBodyMaxBytes: number;
   maxLogEntries: number;
   rateLimitPerMinute: number;
@@ -184,7 +183,6 @@ export const api = {
   getCredentialModels: (id: string) =>
     request<{ models: Array<{ id: string; displayName: string }> }>("GET", `/api/admin/v1/provider-credentials/${id}/models`),
 
-  listGroups: () => request<Group[]>("GET", "/api/admin/v1/groups"),
   createGroup: (input: GroupCreateInput) => request<Group>("POST", "/api/admin/v1/groups", input),
   updateGroup: (id: string, patch: Partial<GroupCreateInput>) =>
     request<Group>("PUT", `/api/admin/v1/groups/${id}`, patch),

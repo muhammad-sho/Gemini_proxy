@@ -57,7 +57,7 @@ describe("SettingsService", () => {
 
   it("schema bounds match documented ranges", () => {
     expect(settingsSchema.safeParse({ ...DEFAULT_SETTINGS, logBodyMaxBytes: 1023 }).success).toBe(false);
-    expect(settingsSchema.safeParse({ ...DEFAULT_SETTINGS, modelsCacheTtlHours: 169 }).success).toBe(false);
+    expect(settingsSchema.safeParse({ ...DEFAULT_SETTINGS, maxLogEntries: 49 }).success).toBe(false);
     expect(settingsSchema.safeParse({ ...DEFAULT_SETTINGS }).success).toBe(true);
   });
 });

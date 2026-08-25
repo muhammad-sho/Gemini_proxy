@@ -96,3 +96,15 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 
 ### Notes
 * React 19 + RTL defers settled-state flushes for async handlers unless wrapped in `await act(async () => …)` — the ConfirmButton error-path test asserts the toast and documents this quirk instead of asserting the deferred re-render DOM.
+
+## Wave 6 — countTokens + full leftover sweep (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 50 | `gateway.routes.ts` (+ mock, integration tests) | `:countTokens` is now proxied through **native Gemini credentials only** — candidate scope intersected with Gemini providers before routing; unsupported actions (`streamGenerateContent`, …) keep returning a clear 404 | Strict generateContent-only rejection message | D2 |
+| 51 | `settingsService.ts` schema/defaults, `client.ts` type, `SettingsPage` field, settings tests | Removed the stale `modelsCacheTtlHours` knob end-to-end (the cache it tuned was deleted when model lists became derived) | **Deprecated:** `modelsCacheTtlHours` setting (stored blobs containing it are ignored on load) | Leftover of the pair-routing redesign |
+| 52 | `authService.ts`, `settingsService.ts`, `client.ts`, `constants.ts`, `openai-compatible.adapter.ts` | Dead-code purge: `changePassword` (+ its unused statement), `resetToDefaultsForTests`, `client.listGroups`, `LOG_SECRET_MASK` constant, and the `void path` workaround in `buildUrl` (renamed to `_path`) | All listed members | Leftover sweep |
+| 53 | `README.md` | Corrected stale wording: model discovery is derived from selected models (no cache), documented `countTokens` support and honest streaming rejection behavior | "served from a local cache" claim | Docs accuracy |
+
+### Still open (unchanged)
+* D1 true streaming (needs focused design work), H3 screenshots (browser env), G2 remainder none.

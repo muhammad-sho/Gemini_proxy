@@ -12,7 +12,6 @@ export const settingsSchema = z.object({
   keyFallbackAttempts: z.number().int().min(1).max(10),
   keyLoopDeadlineMs: z.number().int().min(1_000).max(600_000),
   requestTimeoutMs: z.number().int().min(1_000).max(600_000),
-  modelsCacheTtlHours: z.number().int().min(1).max(168),
   logBodyMaxBytes: z.number().int().min(1_024).max(5_242_880),
   maxLogEntries: z.number().int().min(50).max(100_000),
   rateLimitPerMinute: z.number().int().min(10).max(10_000),
@@ -29,7 +28,6 @@ export const DEFAULT_SETTINGS: ProxySettings = {
   keyFallbackAttempts: 2,
   keyLoopDeadlineMs: 30_000,
   requestTimeoutMs: 60_000,
-  modelsCacheTtlHours: 24,
   logBodyMaxBytes: 65_536,
   maxLogEntries: 1000,
   rateLimitPerMinute: 300,
@@ -72,9 +70,5 @@ export class SettingsService {
     this.stmtUpsert.run(METADATA_KEY, JSON.stringify(merged));
     this.values = merged;
     return { ...this.values };
-  }
-
-  resetToDefaultsForTests(): void {
-    this.values = { ...DEFAULT_SETTINGS };
   }
 }

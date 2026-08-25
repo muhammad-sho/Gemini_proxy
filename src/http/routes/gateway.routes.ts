@@ -59,10 +59,38 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
       const url = new URL(req.url, "http://internal");
       const rawPath = url.pathname;
       const parsed = parseModelFromPath(rawPath);
-      if (!parsed || parsed.action !== "generateContent") {
+      // v1 proxies generation always, and token counting through native
+      // Gemini credentials (OpenAI-compatible upstreams have no equivalent).
+      const supported =
+        parsed !== null && (parsed.action === "generateContent" || parsed.action === "countTokens");
+      if (!parsed || !supported) {
         return reply.status(404).send({
-          error: { code: 404, message: "Only models/{model}:generateContent is proxied", requestId: req.id }
+          error: {
+            code: 404,
+            message: "Only models/{model}:generateContent and models/{model}:countTokens are proxied",
+            requestId: req.id
+          }
         });
+      }
+
+      let plan = resolveRoutePlan(clientKey, parsed.modelId, deps);
+      if (parsed.action === "countTokens") {
+        // Intersect the candidate scope with native Gemini credentials.
+        const geminiIds = new Set(
+          deps.providerCredentialRepo.findAll().filter(c => c.provider === "gemini").map(c => c.id)
+        );
+        const base = plan?.credentialIds ?? [...geminiIds];
+        const scoped = base.filter(id => geminiIds.has(id));
+        if (scoped.length === 0) {
+          return reply.status(503).send({
+            error: {
+              code: 503,
+              message: "countTokens requires a native Gemini credential selected for this model",
+              requestId: req.id
+            }
+          });
+        }
+        plan = { ...plan, credentialIds: scoped };
       }
 
       if (!isModelAllowed(clientKey, parsed.modelId, deps)) {
@@ -88,7 +116,7 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
           modelId: parsed.modelId,
           action: parsed.action,
           abortSignal: abortOnClientDisconnect(reply),
-          plan: resolveRoutePlan(clientKey, parsed.modelId, deps)
+          plan
         });
 
         const headers: Record<string, string> = { "content-type": result.headers["content-type"] ?? "application/json" };

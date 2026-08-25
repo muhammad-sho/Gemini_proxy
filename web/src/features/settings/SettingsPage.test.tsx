@@ -7,7 +7,6 @@ const getSettings = vi.fn(async () => ({
   keyFallbackAttempts: 2,
   keyLoopDeadlineMs: 30000,
   requestTimeoutMs: 60000,
-  modelsCacheTtlHours: 24,
   logBodyMaxBytes: 65536,
   maxLogEntries: 1000,
   rateLimitPerMinute: 300,

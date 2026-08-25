@@ -15,7 +15,6 @@ const ROUTING_FIELDS: NumberField[] = [
   { key: "keyFallbackAttempts", label: "Upstream attempts", hint: "Tries per request before relaying the last response (1–10)", min: 1, max: 10 },
   { key: "keyLoopDeadlineMs", label: "Total deadline (ms)", hint: "Time budget for all attempts of one request (1000–600000)", min: 1000, max: 600000 },
   { key: "requestTimeoutMs", label: "Per-attempt timeout (ms)", hint: "Upstream timeout for each individual attempt (1000–600000)", min: 1000, max: 600000 },
-  { key: "modelsCacheTtlHours", label: "Model cache TTL (hours)", hint: "How long cached model lists stay fresh (1–168)", min: 1, max: 168 }
 ];
 
 const LIMIT_FIELDS: NumberField[] = [

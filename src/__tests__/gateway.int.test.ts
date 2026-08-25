@@ -61,6 +61,11 @@ async function startMock(): Promise<number> {
         }));
         return;
       }
+      if (req.url?.includes(":countTokens")) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ totalTokens: 9 }));
+        return;
+      }
       if (req.url?.includes(":generateContent")) {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({
@@ -214,15 +219,28 @@ describe("split gateway surfaces", () => {
     expect(hits["GOOD_KEY"]).toBe(1);
   });
 
-  it("rejects non-generateContent actions", async () => {
+  it("rejects unsupported actions", async () => {
     const res = await geminiApp.inject({
       method: "POST",
-      url: "/v1beta/models/gemini-2.0-flash:countTokens",
+      url: "/v1beta/models/gemini-2.0-flash:streamGenerateContent",
       headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
       payload: {}
     });
     expect(res.statusCode).toBe(404);
     expect(res.json().error.message).toMatch(/generateContent/);
+  });
+
+  it("proxies countTokens through native Gemini credentials", async () => {
+    const beforeGood = hits.GOOD_KEY ?? 0;
+    const res = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:countTokens",
+      headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
+      payload: { contents: [{ parts: [{ text: "count me" }] }] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(json<{ totalTokens: number }>(res).totalTokens).toBe(9);
+    expect(hits.GOOD_KEY ?? 0).toBe(beforeGood + 1); // routed via the native credential
   });
 
   it("puts the invalid key into cooldown", async () => {
@@ -236,6 +254,7 @@ describe("split gateway surfaces", () => {
 
   it("second request skips the cooled key entirely", async () => {
     hits.BAD_KEY = 0;
+    const beforeGood = hits.GOOD_KEY ?? 0;
     const res = await geminiApp.inject({
       method: "POST",
       url: "/v1beta/models/gemini-2.0-flash:generateContent",
@@ -244,7 +263,7 @@ describe("split gateway surfaces", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(hits["BAD_KEY"]).toBe(0);
-    expect(hits["GOOD_KEY"]).toBe(2);
+    expect(hits.GOOD_KEY ?? 0).toBe(beforeGood + 1);
   });
 
   it("records usage events and request logs", async () => {

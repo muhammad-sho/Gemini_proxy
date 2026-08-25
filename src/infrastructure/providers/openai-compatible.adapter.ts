@@ -57,9 +57,8 @@ export class OpenAICompatibleAdapter implements ProviderAdapter {
     }));
   }
 
-  buildUrl(credential: UpstreamCredential, path: string): string {
+  buildUrl(credential: UpstreamCredential, _path: string): string {
     // Gemini-style /v1beta/models/{model}:generateContent -> /v1/chat/completions
-    void path;
     return `${this.baseUrlFor(credential)}/v1/chat/completions`;
   }
 

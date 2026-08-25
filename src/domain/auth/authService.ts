@@ -11,7 +11,6 @@ export interface AdminUser {
 export class AuthService {
   private db = getDb();
   private stmtGetByUsername = this.db.prepare("SELECT * FROM admin_users WHERE username = ?");
-  private stmtUpdatePassword = this.db.prepare("UPDATE admin_users SET password_hash = ? WHERE id = ?");
   private stmtCount = this.db.prepare("SELECT COUNT(*) as count FROM admin_users");
   private stmtInsert = this.db.prepare(
     "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)"
@@ -39,10 +38,5 @@ export class AuthService {
 
   verifyPassword(user: AdminUser, password: string): boolean {
     return verifyPassword(password, user.password_hash);
-  }
-
-  changePassword(userId: number, newPassword: string): void {
-    const hash = hashPassword(newPassword);
-    this.stmtUpdatePassword.run(hash, userId);
   }
 }
