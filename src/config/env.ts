@@ -20,10 +20,3 @@ export function loadConfig(): EnvConfig {
   cachedConfig = validateEnv(env);
   return cachedConfig;
 }
-
-export function getConfig(): EnvConfig {
-  if (!cachedConfig) {
-    return loadConfig();
-  }
-  return cachedConfig;
-}

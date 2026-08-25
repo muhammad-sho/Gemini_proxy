@@ -56,8 +56,6 @@ export const providerCredentialCreateSchema = z.object({
   allowedGroups: z.array(z.string()).optional()
 });
 
-export type ClientKeyCreate = z.infer<typeof clientKeyCreateSchema>;
-export type ProviderCredentialCreate = z.infer<typeof providerCredentialCreateSchema>;
 
 export const providerCredentialUpdateSchema = z.object({
   label: z.string().min(1).max(128).optional(),
@@ -66,7 +64,6 @@ export const providerCredentialUpdateSchema = z.object({
   allowedGroups: z.array(z.string()).optional()
 });
 
-export type ProviderCredentialUpdate = z.infer<typeof providerCredentialUpdateSchema>;
 
 const chatMessageSchema = z.object({
   role: z.enum(["system", "developer", "user", "assistant", "tool"]),
@@ -95,7 +92,6 @@ export interface ChatMessage {
 // ---- Groups and routing strategies ----
 
 export const routingStrategySchema = z.enum(["round_robin", "least_used", "fastest", "smartest"]);
-export type RoutingStrategyInput = z.infer<typeof routingStrategySchema>;
 
 const groupPairSchema = z.object({
   credentialId: z.string().min(1),
@@ -130,7 +126,3 @@ export const providerProbeSchema = z.object({
   baseUrl: z.string().url().optional()
 });
 
-export type GroupCreate = z.infer<typeof groupCreateSchema>;
-export type GroupUpdate = z.infer<typeof groupUpdateSchema>;
-export type ClientKeyUpdate = z.infer<typeof clientKeyUpdateSchema>;
-export type ProviderProbe = z.infer<typeof providerProbeSchema>;

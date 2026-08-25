@@ -136,3 +136,9 @@ E2 remainder deferred: admin-tunable global rate limit and per-client-key gatewa
 | # | File | Change | Deprecated / removed | Why |
 |---|------|--------|----------------------|-----|
 | 61 | `modelCredentialState.ts`, `routing.service.ts`, `global.css`, `OverviewPage.tsx` (+int test) | Code-review fixes: (a) success path now calls `recordSuccess()` so `error_count` tracks consecutive failures — recovered pairs stop rendering rose "failing" in the matrix; (b) `.matrix-wrap` got `max-height:480px; overflow:auto` so the sticky header actually engages on tall tables; (c) removed unused `labelOf` helper. Noted: matrix shows only current credentials/models — historical usage under deleted entities stays in `usage_events`/logs but is intentionally not displayed here | — | Post-commit review findings 1–3; finding 4 documented as intended |
+
+## Project-wide review pass 2 (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 62 | `modelGroups.ts`, `env.ts`, `validation.ts` | Review sweep of src + web: removed unused `ROUTING_STRATEGIES` const, unused `getConfig()` accessor, and 8 unreferenced `z.infer` type aliases. Verified clean otherwise: no dead CSS classes, no unused npm deps, no debug leftovers, README/plan docs current, `.gitignore` covers build/data artifacts | `ROUTING_STRATEGIES`, `getConfig()`, `ClientKeyCreate`/`ProviderCredentialCreate`/`ProviderCredentialUpdate`/`RoutingStrategyInput`/`GroupCreate`/`GroupUpdate`/`ClientKeyUpdate`/`ProviderProbe` type aliases | Dead code from earlier waves; schemas remain in use via routes |

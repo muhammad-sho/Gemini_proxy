@@ -2,7 +2,6 @@ import { getDb } from "../connection.js";
 import { randomUUID } from "crypto";
 
 export type RoutingStrategy = "round_robin" | "least_used" | "fastest" | "smartest";
-export const ROUTING_STRATEGIES: RoutingStrategy[] = ["round_robin", "least_used", "fastest", "smartest"];
 
 /** One routing target: a specific credential serving a specific model. */
 export interface GroupPair {
