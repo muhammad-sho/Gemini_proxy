@@ -254,7 +254,11 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
                 <td>{new Date(c.createdAt * 1000).toLocaleDateString()}</td>
                 <td>
                   <button className="btn btn-ghost" onClick={() => setEditing(c)}>Edit</button>
-                  <ConfirmButton prompt="Delete" onConfirm={() => remove(c.id)} />
+                  <ConfirmButton
+                    prompt="Delete"
+                    warning="Removes this key and its targets from all groups. Applications using it will stop working."
+                    onConfirm={() => remove(c.id)}
+                  />
                 </td>
               </tr>
             ))}

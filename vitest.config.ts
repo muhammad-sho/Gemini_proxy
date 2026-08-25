@@ -7,7 +7,21 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
-      exclude: ["node_modules/", "dist/", "src/main.ts", "**/*.d.ts"]
+      include: ["src/**/*.ts"],
+      exclude: [
+        "node_modules/",
+        "dist/",
+        "src/main.ts",
+        "**/*.d.ts",
+        "vitest.config.ts",
+        "src/**/*.test.ts"
+      ],
+      thresholds: {
+        statements: 80,
+        lines: 80,
+        functions: 70,
+        branches: 65
+      }
     },
     testTimeout: 10000,
     hookTimeout: 10000

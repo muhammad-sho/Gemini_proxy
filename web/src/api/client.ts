@@ -33,6 +33,16 @@ export interface AdminState {
   cooling: Array<{ model_id: string; credential_id: string; cooldown_until: number; cooldown_reason: string | null }>;
 }
 
+export interface AuditEntry {
+  id: number;
+  action: string;
+  entityType: string | null;
+  entityId: string | null;
+  adminUserId: number | null;
+  ipAddress: string | null;
+  createdAt: number;
+}
+
 export interface UsageSummary {
   days: 1 | 7;
   models: Array<{ modelId: string; requests: number; promptTokens: number; completionTokens: number }>;
@@ -142,6 +152,15 @@ export const api = {
   getState: () => request<AdminState>("GET", "/api/admin/v1/state"),
   getUsageSummary: (days: 1 | 7) =>
     request<UsageSummary>("GET", `/api/admin/v1/usage-summary?days=${days}`),
+  listAuditLogs: (params: { action?: string; limit?: number; offset?: number }) => {
+    const search = new URLSearchParams();
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== "") search.set(k, String(v));
+    }
+    return request<{ total: number; actions: string[]; logs: AuditEntry[] }>(
+      "GET", `/api/admin/v1/audit-logs?${search}`
+    );
+  },
 
   getSettings: () => request<ProxySettings>("GET", "/api/admin/v1/settings"),
   updateSettings: (patch: Partial<ProxySettings>) => request<ProxySettings>("PUT", "/api/admin/v1/settings", patch),

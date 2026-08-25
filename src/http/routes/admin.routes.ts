@@ -309,6 +309,29 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       return { cleared };
     });
 
+    // ---- Security log (audit trail) ----
+    app.get("/audit-logs", async (req) => {
+      const q = req.query as { action?: string; limit?: string; offset?: string };
+      const result = deps.auditRepo.findFiltered({
+        action: q.action || undefined,
+        limit: Math.min(Number(q.limit ?? 50), 200),
+        offset: Number(q.offset ?? 0)
+      });
+      return {
+        total: result.total,
+        actions: deps.auditRepo.distinctActions(),
+        logs: result.logs.map(l => ({
+          id: l.id,
+          action: l.action,
+          entityType: l.entity_type,
+          entityId: l.entity_id,
+          adminUserId: l.admin_user_id,
+          ipAddress: l.ip_address,
+          createdAt: l.created_at
+        }))
+      };
+    });
+
     // ---- Runtime settings (dashboard Settings tab) ----
     app.get("/settings", async () => deps.settings.all());
 

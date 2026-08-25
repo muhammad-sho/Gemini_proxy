@@ -617,6 +617,42 @@ describe("split gateway surfaces", () => {
     expect(saw429).toBe(true);
   });
 
+  it("exposes health checks and the security log", async () => {
+    const live = await adminApp.inject({ method: "GET", url: "/health/live" });
+    expect(live.statusCode).toBe(200);
+    expect(json<{ status: string }>(live).status).toBe("ok");
+
+    const ready = await adminApp.inject({ method: "GET", url: "/health/ready" });
+    expect(ready.statusCode).toBe(200);
+    expect(json<{ checks: Record<string, boolean> }>(ready).checks.database).toBe(true);
+
+    const audit = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/audit-logs?limit=10",
+      headers: { cookie: adminCookie }
+    });
+    expect(audit.statusCode).toBe(200);
+    const body = json<{
+      total: number;
+      actions: string[];
+      logs: Array<{ action: string; entityType: string | null; entityId: string | null }>;
+    }>(audit);
+    expect(body.total).toBeGreaterThan(0);
+    expect(body.actions).toContain("setup");
+    // The integrity test above performed group updates/deletes — all audited.
+    expect(body.logs.some(l => l.action === "delete" && l.entityType === "group")).toBe(true);
+
+    // Action filter narrows results.
+    const filtered = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/audit-logs?action=setup",
+      headers: { cookie: adminCookie }
+    });
+    const filteredBody = json<{ total: number; logs: Array<{ action: string }> }>(filtered);
+    expect(filteredBody.total).toBe(1);
+    expect(filteredBody.logs.every(l => l.action === "setup")).toBe(true);
+  });
+
   // ---- Admin surface ----
 
   it("rejects unauthenticated admin calls", async () => {

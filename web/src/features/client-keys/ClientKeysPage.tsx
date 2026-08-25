@@ -179,8 +179,25 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
                 </td>
                 <td>{new Date(k.createdAt * 1000).toLocaleDateString()}</td>
                 <td>
+                  <button
+                    className="btn btn-ghost"
+                    title="Copy key ID"
+                    aria-label={`Copy key ID for ${k.label}`}
+                    onClick={() => {
+                      navigator.clipboard.writeText(k.id).then(
+                        () => toast("info", "Key ID copied"),
+                        () => toast("error", "Copy failed")
+                      );
+                    }}
+                  >
+                    Copy ID
+                  </button>
                   <button className="btn btn-ghost" onClick={() => setEditing(k)}>Edit</button>
-                  <ConfirmButton prompt="Delete" onConfirm={() => remove(k.id)} />
+                  <ConfirmButton
+                    prompt="Delete"
+                    warning="Applications authenticating with this key will immediately receive 401s."
+                    onConfirm={() => remove(k.id)}
+                  />
                 </td>
               </tr>
             ))}

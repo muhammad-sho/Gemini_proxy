@@ -33,6 +33,28 @@ The server is a modular TypeScript/Fastify application. One process hosts **thre
 
 All three ports are published as-is by the shipped compose file. To change a public port or restrict an interface, edit the `ports:` mappings in `docker-compose.yml`. Source runs (no Docker) bind the dashboard to loopback unless `ADMIN_HOST` says otherwise.
 
+### Anatomy of a routed request
+
+```mermaid
+sequenceDiagram
+    participant App as Your app
+    participant GW as Gateway (Gemini or OpenAI)
+    participant R as RoutingService
+    participant U as Upstream provider
+    App->>GW: request + proxy client key
+    GW->>GW: SHA-256 key lookup, model/group permission check
+    GW->>R: canonical request + routing plan
+    loop up to attempts / deadline
+        R->>U: best candidate per strategy (least-used / round-robin / fastest / smartest)
+        U-->>R: response
+        alt failure is cooldown-worthy
+            R->>R: cool this key×model, re-rank rest by fallback strategy
+        end
+    end
+    R-->>GW: relayed body + attempt timeline
+    GW-->>App: Gemini format verbatim / OpenAI format translated
+```
+
 Because each surface always knows which wire format it is receiving, there is no format detection: the Gemini gateway forwards Gemini bodies (translating per provider adapter), while the OpenAI gateway translates chat-completion requests into the canonical internal shape before routing.
 
 Request flow: route → auth → validation → use case → router/adapters → repositories.
@@ -203,6 +225,39 @@ If an attempt fails, the next-best candidate under the active strategy is tried 
 | Other 4xx | permanent | none |
 
 Cooled-down keys drop out of rotation but remain last-resort candidates (soonest expiry first). Expired cooldowns are promoted back to ready automatically.
+
+---
+
+---
+
+# API Reference
+
+## Gateways (client keys)
+
+| Method & path | Auth | Notes |
+| --- | --- | --- |
+| `GET :18770/v1beta/models` | `x-goog-api-key` / Bearer / `?key=` | Models selected on active credentials, filtered by the key's permissions |
+| `POST :18770/v1beta/models/{model}:generateContent` | same | Relayed verbatim; only `:generateContent` is proxied |
+| `GET :18771/v1/models` | `Authorization: Bearer` | OpenAI-format model list |
+| `POST :18771/v1/chat/completions` | `Authorization: Bearer` | Translated to/from the internal format; `stream:true` rejected |
+
+Proxy-origin errors use `{ "error": { "code": number, "message": string, "requestId": string } }`.
+
+## Admin API (dashboard port, session cookie; mutations also send `x-csrf-token`)
+
+| Method & path | Purpose |
+| --- | --- |
+| `GET /setup/status` · `POST /setup` | Public first-run provisioning (one-time) |
+| `POST /login` · `POST /logout` | Brute-force bucket: 10/min/IP |
+| `GET /state` | Everything the dashboard tabs render |
+| `POST/PUT/DELETE /provider-credentials[/:id]`, `GET /:id/models` | Manage keys; live probe of available models |
+| `POST /provider-models/probe` | Probe models for a not-yet-saved key |
+| `GET/POST /groups`, `PUT/DELETE /groups/:id` | Pair-based groups with routing strategies |
+| `POST/PUT/DELETE /client-keys[/:id]` | Client keys with model/group permissions |
+| `GET /logs`, `GET /logs/:id` | Request logs with timeline + payloads |
+| `GET /audit-logs` | Security log (who did what, when, from where) |
+| `GET/PUT /settings` | Runtime tuning, applied immediately |
+| `POST /models/refresh` *(removed)* — model lists are derived, nothing to refresh | |
 
 ---
 

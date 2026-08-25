@@ -65,3 +65,21 @@ workstreams in `proposed-plan.md`.
 | 36 | `gateway.int.test.ts` | New cases: HTTPS login yields `__Host-` cookies + authenticates; HSTS header absent by default; 12 wrong logins hit 429; suite enables `TRUST_PROXY` to exercise forwarded-proto paths | — | E2/E3 coverage |
 
 E2 remainder deferred: admin-tunable global rate limit and per-client-key gateway buckets.
+
+## Wave 4 — visibility, polish, quality gates (this change)
+
+| # | File | Change | Deprecated / removed | Why |
+|---|------|--------|----------------------|-----|
+| 37 | `auditLogs.ts` + `admin.routes.ts` (`GET /audit-logs`) + `client.ts` + `SettingsPage.tsx` | Security log: filtered audit trail with action dropdown, surfaced under Settings | Audit data written but invisible | B4 |
+| 38 | `ConfirmButton.tsx` (+ three pages) | `warning` prop renders consequence hints (aria-label + title) on destructive confirms | Generic bare "Delete" prompts | C5 |
+| 39 | `LogsPage.tsx` / `OverviewPage.tsx` / `ClientKeysPage.tsx` | Relative log timestamps with full-time tooltips; cooling countdowns (W2); outcome filter chips; per-key "Copy ID" button | Clock-style time cell; outcome `<select>` | C6 |
+| 40 | `scripts/e2e.mjs` (new) + `package.json` (`npm run e2e`) + CI step | Dependency-free end-to-end happy path (setup → provider probe → group → client key → both gateways → metrics/logs/audit) replacing a Playwright dependency — keeps the install lightweight | Playwright plan (deviation documented in roadmap) | G3 |
+| 41 | `vitest.config.ts` | Coverage scoped to real source (tests/config excluded) with floors: statements/lines ≥80, functions ≥70, branches ≥65 — currently 85.2/88.3/75.4 | Unscoped coverage report (60.8% including test files) | G4 |
+| 42 | New tests: `adapters.test.ts`, `providerProbe.service.test.ts`, `migration.test.ts`, `encryptionKey.test.ts`, health/audit integration case | Adapter translation/listing/pagination-cap coverage, metadata-host guard, legacy-DB upgrade fixture, key generation persistence | — | G4 support |
+| 43 | `.github/workflows/ci.yml` | Test step runs with `--coverage` so the floors gate every push; e2e step added after build smoke | Coverage-blind CI | G4/G3 |
+| 44 | `README.md` | Mermaid sequence diagram of a routed request; compact API reference tables for both gateways and the admin surface | Stale narrative-only docs | H1/H2 |
+
+### Deferred from this wave
+* **G2** frontend component tests (Testing Library) — next wave.
+* **H3** screenshots — needs a browser environment.
+* **E2 remainder** global/per-client-key rate-limit knobs.

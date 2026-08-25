@@ -15,12 +15,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --legacy-peer-deps --no-audit --no-fund
-      - name: Typecheck (server + web), lint, tests, dashboard build
+      - name: Typecheck (server + web), lint, tests + coverage floors, dashboard build
         run: |
           npx tsc --noEmit
           npx tsc -p web --noEmit
           npm run lint --if-present
-          npm test
+          npm test -- --coverage
           npm run web:build
       - name: Migration startup smoke test (fresh data dir must reach readiness)
         run: |
@@ -33,3 +33,6 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18770/v1beta/models)" = "401"
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18771/v1/models)" = "401"
           kill $SERVER_PID
+
+      - name: End-to-end happy path (setup → provider → group → both gateways)
+        run: node scripts/e2e.mjs

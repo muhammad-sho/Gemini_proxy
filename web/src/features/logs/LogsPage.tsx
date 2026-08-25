@@ -7,6 +7,14 @@ const PAGE_SIZE = 25;
 
 const OUTCOMES = ["", "success", "error", "timeout", "aborted", "no_keys"] as const;
 
+function relTime(epochSec: number): string {
+  const diff = Date.now() / 1000 - epochSec;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 function outcomeClass(outcome: string): string {
   if (outcome === "success") return "pill pill-ready";
   if (outcome === "error" || outcome === "no_keys") return "pill pill-error";
@@ -74,9 +82,18 @@ export function LogsPage() {
       <div className="page-header">
         <h1>Request logs</h1>
         <div className="actions">
-          <select value={outcome} onChange={e => { setOutcome(e.target.value); setOffset(0); }}>
-            {OUTCOMES.map(o => <option key={o} value={o}>{o === "" ? "All outcomes" : o}</option>)}
-          </select>
+          <div className="chips" role="group" aria-label="Filter by outcome">
+            {OUTCOMES.map(o => (
+              <button
+                key={o}
+                className={`chip ${outcome === o ? "chip-active" : ""}`}
+                aria-pressed={outcome === o}
+                onClick={() => { setOutcome(o); setOffset(0); }}
+              >
+                {o === "" ? "All" : o}
+              </button>
+            ))}
+          </div>
           <input
             className="search"
             placeholder="Search bodies…"
@@ -101,7 +118,7 @@ export function LogsPage() {
               onClick={() => void openDetail(l.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(l.id); } }}
             >
-              <td>{new Date(l.createdAt * 1000).toLocaleTimeString()}</td>
+              <td title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
               <td><code>{l.modelId ?? "—"}</code></td>
               <td>{l.responseStatus ?? "—"}</td>
               <td><span className={outcomeClass(l.finalOutcome)}>{l.finalOutcome}</span></td>

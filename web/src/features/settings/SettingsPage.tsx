@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api, type ProxySettings } from "../../api/client.js";
+import { useCallback, useEffect, useState } from "react";
+import { api, type AuditEntry, type ProxySettings } from "../../api/client.js";
 import { useApp } from "../../auth/useAuth.js";
 
 interface NumberField {
@@ -25,11 +25,21 @@ const LOG_FIELDS: NumberField[] = [
 export function SettingsPage() {
   const [values, setValues] = useState<ProxySettings | null>(null);
   const [busy, setBusy] = useState(false);
+  const [audit, setAudit] = useState<{ total: number; actions: string[]; logs: AuditEntry[] } | null>(null);
+  const [auditAction, setAuditAction] = useState("");
   const { toast } = useApp();
 
   useEffect(() => {
     api.getSettings().then(setValues).catch(() => { /* 401 handled globally */ });
   }, []);
+
+  const loadAudit = useCallback((action: string) => {
+    api.listAuditLogs({ action: action || undefined, limit: 50 })
+      .then(setAudit)
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  useEffect(() => { loadAudit(auditAction); }, [auditAction, loadAudit]);
 
   if (!values) return <p className="hint center">Loading…</p>;
 
@@ -97,6 +107,44 @@ export function SettingsPage() {
           </label>
         ))}
       </form>
+
+      <h2>Security log</h2>
+      <div className="actions">
+        <select
+          value={auditAction}
+          aria-label="Filter by action"
+          onChange={e => setAuditAction(e.target.value)}
+        >
+          <option value="">All actions</option>
+          {(audit?.actions ?? []).map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+        {audit && <span className="hint">{audit.total} entries</span>}
+      </div>
+      {!audit || audit.logs.length === 0 ? (
+        <p className="hint">Nothing recorded yet.</p>
+      ) : (
+        <table className="table">
+          <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead>
+          <tbody>
+            {audit.logs.map(l => (
+              <tr key={l.id}>
+                <td title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+                <td><span className="pill pill-idle">{l.action}</span></td>
+                <td><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
+                <td>{l.ipAddress ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </section>
   );
+}
+
+function relTime(epochSec: number): string {
+  const diff = Date.now() / 1000 - epochSec;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
 }

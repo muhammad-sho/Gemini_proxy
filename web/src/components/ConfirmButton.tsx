@@ -3,11 +3,15 @@ import { useApp } from "../auth/useAuth.js";
 
 export function ConfirmButton({
   prompt,
+  warning,
   onConfirm,
   children,
   className = "btn btn-danger"
 }: {
+  /** Confirmation button label, e.g. "Yes, delete". */
   prompt: string;
+  /** Consequence hint shown next to the confirmation. */
+  warning?: string;
   onConfirm: () => Promise<void>;
   children?: ReactNode;
   className?: string;
@@ -35,7 +39,14 @@ export function ConfirmButton({
 
   return (
     <span className="confirm-pair">
-      <button className={className} onClick={confirm}>{prompt}</button>
+      <button
+        className={className}
+        title={warning}
+        aria-label={warning ? `${prompt}. ${warning}` : prompt}
+        onClick={confirm}
+      >
+        {prompt}
+      </button>
       <button className="btn btn-ghost" onClick={() => setArmed(false)}>Cancel</button>
     </span>
   );

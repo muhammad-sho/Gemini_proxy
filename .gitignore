@@ -6,3 +6,4 @@ data/
 dist/
 dist-web/
 node_modules/
+coverage/

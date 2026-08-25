@@ -228,7 +228,11 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
                 <td>{g.pairs.length}</td>
                 <td>
                   <button className="btn btn-ghost" onClick={() => setEditing(g)}>Edit</button>
-                  <ConfirmButton prompt="Delete" onConfirm={() => remove(g.id)} />
+                  <ConfirmButton
+                    prompt="Delete"
+                    warning="Client keys assigned to this group lose its permissions immediately."
+                    onConfirm={() => remove(g.id)}
+                  />
                 </td>
               </tr>
             ))}
