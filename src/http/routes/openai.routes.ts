@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AppDeps } from "../server.js";
 import { ClientDisconnectedError } from "../../application/gateway/routing.service.js";
+import { deriveModelCatalog } from "../../application/gateway/catalog.js";
 import {
   chatRequestToGenerate,
   generateResponseToChat,
@@ -12,7 +13,8 @@ import {
   abortOnClientDisconnect,
   authenticateClient,
   extractBearerToken,
-  isModelAllowed
+  isModelAllowed,
+  resolveRoutePlan
 } from "./clientAccess.js";
 
 function openAiError(status: number, message: string, type: string): OpenAiErrorBody {
@@ -27,7 +29,7 @@ function openAiError(status: number, message: string, type: string): OpenAiError
  */
 export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
   return async (app) => {
-    // Model discovery in OpenAI list format
+    // Model discovery in OpenAI list format (derived, never stored)
     app.get("/v1/models", async (req, reply) => {
       const clientKey = authenticateClient(deps, extractBearerToken(req));
       if (!clientKey) {
@@ -37,19 +39,11 @@ export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
         );
       }
 
-      const cached = deps.cacheRepo.getAll();
-      deps.modelCacheService.maybeRefresh();
-
-      const data = cached
-        .map(row => {
-          try { return JSON.parse(row.raw_data); } catch { return null; }
-        })
-        .filter(Boolean)
-        .filter((m: any) => isModelAllowed(clientKey, m.id, deps))
-        .map((m: any) => ({
+      const data = deriveModelCatalog(deps.providerCredentialRepo.findAll())
+        .filter(m => isModelAllowed(clientKey, m.id, deps))
+        .map(m => ({
           id: m.id,
           object: "model",
-          created: Math.floor((m.createdAt ?? Date.now()) / 1000),
           owned_by: "gemini-proxy"
         }));
 
@@ -98,7 +92,8 @@ export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
           clientKeyId: clientKey.id,
           modelId,
           action: "generateContent",
-          abortSignal: abortOnClientDisconnect(reply)
+          abortSignal: abortOnClientDisconnect(reply),
+          plan: resolveRoutePlan(clientKey, modelId, deps)
         });
 
         let upstreamBody: unknown = null;

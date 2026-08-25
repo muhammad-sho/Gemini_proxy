@@ -14,7 +14,6 @@ import { ProviderCredentialRepository } from "./../infrastructure/db/repositorie
 import { ModelCredentialStateRepository } from "./../infrastructure/db/repositories/modelCredentialState.js";
 import { UsageEventRepository } from "./../infrastructure/db/repositories/usageEvents.js";
 import { RequestLogRepository } from "./../infrastructure/db/repositories/requestLogs.js";
-import { ModelCacheRepository } from "./../infrastructure/db/repositories/modelCache.js";
 import { ModelGroupRepository } from "./../infrastructure/db/repositories/modelGroups.js";
 import { AuditLogRepository } from "./../infrastructure/db/repositories/auditLogs.js";
 
@@ -25,7 +24,7 @@ import { GeminiAdapter } from "./../infrastructure/providers/gemini.adapter.js";
 import { OpenAICompatibleAdapter } from "./../infrastructure/providers/openai-compatible.adapter.js";
 
 import { RoutingService } from "./../application/gateway/routing.service.js";
-import { ModelCacheService } from "./../application/gateway/modelCache.service.js";
+import { ProviderProbeService } from "./../application/gateway/providerProbe.service.js";
 
 import { healthRoutes } from "./routes/health.routes.js";
 import { gatewayRoutes } from "./routes/gateway.routes.js";
@@ -40,14 +39,13 @@ export interface AppDeps {
   db: Database;
   settings: SettingsService;
   routingService: RoutingService;
-  modelCacheService: ModelCacheService;
+  probeService: ProviderProbeService;
   adminSessionService: AdminSessionService;
   clientKeyRepo: ClientKeyRepository;
   providerCredentialRepo: ProviderCredentialRepository;
   stateRepo: ModelCredentialStateRepository;
   usageRepo: UsageEventRepository;
   logRepo: RequestLogRepository;
-  cacheRepo: ModelCacheRepository;
   groupRepo: ModelGroupRepository;
   auditRepo: AuditLogRepository;
 }
@@ -119,7 +117,6 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
   const stateRepo = new ModelCredentialStateRepository();
   const usageRepo = new UsageEventRepository();
   const logRepo = new RequestLogRepository();
-  const cacheRepo = new ModelCacheRepository();
   const groupRepo = new ModelGroupRepository();
   const auditRepo = new AuditLogRepository();
 
@@ -133,14 +130,14 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
   const openaiAdapter = new OpenAICompatibleAdapter();
 
   const routingService = new RoutingService(
-    providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, logger, geminiAdapter, openaiAdapter, settings
+    providerCredentialRepo, stateRepo, usageRepo, logRepo, logger, geminiAdapter, openaiAdapter, settings
   );
-  const modelCacheService = new ModelCacheService(providerCredentialRepo, cacheRepo, logger, geminiAdapter, openaiAdapter, settings);
+  const probeService = new ProviderProbeService(geminiAdapter, openaiAdapter);
 
   const deps: AppDeps = {
     config, logger, db, settings,
-    routingService, modelCacheService, adminSessionService,
-    clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, groupRepo, auditRepo
+    routingService, probeService, adminSessionService,
+    clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, groupRepo, auditRepo
   };
 
   // ---- Admin/dashboard server ----

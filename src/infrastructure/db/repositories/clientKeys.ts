@@ -28,6 +28,11 @@ export class ClientKeyRepository {
     VALUES (?, ?, ?, ?, ?)
   `);
   private stmtDelete = this.db.prepare("DELETE FROM client_keys WHERE id = ?");
+  private stmtUpdate = this.db.prepare(`
+    UPDATE client_keys
+    SET label = ?, allowed_models = ?, allowed_groups = ?
+    WHERE id = ?
+  `);
 
   private parseRow(row: any): ClientKey {
     return {
@@ -78,6 +83,16 @@ export class ClientKeyRepository {
 
   delete(id: string): boolean {
     const result = this.stmtDelete.run(id);
+    return result.changes > 0;
+  }
+
+  update(id: string, fields: { label: string; allowed_models: string[]; allowed_groups: string[] }): boolean {
+    const result = this.stmtUpdate.run(
+      fields.label,
+      JSON.stringify(fields.allowed_models),
+      JSON.stringify(fields.allowed_groups),
+      id
+    );
     return result.changes > 0;
   }
 }

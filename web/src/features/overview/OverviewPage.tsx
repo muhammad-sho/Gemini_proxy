@@ -1,6 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
 import { api, type AdminState } from "../../api/client.js";
-import { useApp } from "../../auth/useAuth.js";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
 
 function pillClass(count: number): string {
@@ -9,22 +7,6 @@ function pillClass(count: number): string {
 }
 
 export function OverviewPage({ state, reload }: { state: AdminState; reload: () => Promise<void> }) {
-  const { toast } = useApp();
-  const [busy, setBusy] = useState(false);
-
-  const run = useCallback(async (fn: () => Promise<unknown>, okMsg: string) => {
-    setBusy(true);
-    try {
-      await fn();
-      await reload();
-      toast("info", okMsg);
-    } catch (e) {
-      toast("error", String((e as Error).message));
-    } finally {
-      setBusy(false);
-    }
-  }, [reload, toast]);
-
   const usageEntries = Object.entries(state.usageByModel).sort((a, b) => b[1] - a[1]);
   const maxUsage = Math.max(1, ...usageEntries.map(e => e[1]));
 
@@ -33,9 +15,6 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
       <div className="page-header">
         <h1>Overview</h1>
         <div className="actions">
-          <button className="btn" disabled={busy} onClick={() => run(() => api.refreshModels(), "Model cache refreshed")}>
-            Refresh models
-          </button>
           <ConfirmButton prompt="Clear all cooldowns" onConfirm={async () => { await api.clearCooldowns(); await reload(); }}>
             Clear cooldowns
           </ConfirmButton>
@@ -52,8 +31,8 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
           <div className="stat-label">Provider credentials</div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{state.models.length}</div>
-          <div className="stat-label">Cached models</div>
+          <div className="stat-value">{state.groups.length}</div>
+          <div className="stat-label">Groups</div>
         </div>
         <div className="stat-card">
           <div className={`stat-value ${state.cooling.length > 0 ? "warn" : ""}`}>{state.cooling.length}</div>
@@ -74,7 +53,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
               <tr key={model}>
                 <td><code>{model}</code></td>
                 <td>{count}</td>
-                <td className="bar-cell"><span className={pillClass(count)} style={{}} data-count={count}>{count === 0 ? "idle" : `${Math.round((count / maxUsage) * 100)}%`}</span></td>
+                <td className="bar-cell"><span className={pillClass(count)}>{count === 0 ? "idle" : `${Math.round((count / maxUsage) * 100)}%`}</span></td>
               </tr>
             ))}
           </tbody>
@@ -93,7 +72,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
             {state.cooling.map(c => (
               <tr key={`${c.model_id}:${c.credential_id}`}>
                 <td><code>{c.model_id}</code></td>
-                <td><code>{c.credential_id.slice(0, 13)}…</code></td>
+                <td><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
                 <td>{c.cooldown_reason ?? "—"}</td>
                 <td>{new Date(c.cooldown_until).toLocaleTimeString()}</td>
               </tr>

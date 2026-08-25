@@ -3,10 +3,15 @@ import type { AppDeps } from "../server.js";
 import { requireAdmin, recordAudit } from "./auth.routes.js";
 import {
   clientKeyCreateSchema,
+  clientKeyUpdateSchema,
+  groupCreateSchema,
+  groupUpdateSchema,
   providerCredentialCreateSchema,
-  providerCredentialUpdateSchema
+  providerCredentialUpdateSchema,
+  providerProbeSchema
 } from "../../shared/validation.js";
 import { settingsUpdateSchema } from "./../../domain/settings/settingsService.js";
+import { deriveModelCatalog, derivePairs } from "../../application/gateway/catalog.js";
 
 function guard(deps: AppDeps, req: FastifyRequest): boolean {
   return requireAdmin(deps)(req) !== null;
@@ -24,12 +29,10 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
 
     // ---- State overview ----
     app.get("/state", async () => {
+      const credentials = deps.providerCredentialRepo.findAll();
       const clientKeys = deps.clientKeyRepo.findAll().map(k => ({
-        id: k.id, label: k.label, allowedModels: k.allowed_models, createdAt: k.created_at
-      }));
-      const credentials = deps.providerCredentialRepo.findAll().map(c => ({
-        id: c.id, label: c.label, provider: c.provider, baseUrl: c.base_url,
-        allowedModels: c.allowed_models, createdAt: c.created_at
+        id: k.id, label: k.label, allowedModels: k.allowed_models,
+        allowedGroups: k.allowed_groups, createdAt: k.created_at
       }));
       const usageByModel = deps.usageRepo.getRecent(500).reduce<Record<string, number>>((acc, e) => {
         acc[e.model_id] = (acc[e.model_id] ?? 0) + 1;
@@ -40,30 +43,52 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       ).all(Date.now());
 
       return {
+        credentials: credentials.map(c => ({
+          id: c.id, label: c.label, provider: c.provider, baseUrl: c.base_url,
+          allowedModels: c.allowed_models, createdAt: c.created_at
+        })),
+        models: deriveModelCatalog(credentials),
+        pairs: derivePairs(credentials),
+        groups: deps.groupRepo.list(),
         clientKeys,
-        credentials,
-        models: deps.cacheRepo.getAll().map(row => JSON.parse(row.raw_data)),
-        groups: deps.groupRepo.findAll(),
         usageByModel,
         cooling
       };
     });
 
-    // ---- Client keys ----
-    app.post("/client-keys", async (req, reply) => {
-      const parsed = clientKeyCreateSchema.safeParse(req.body);
+    // ---- Live provider model probing (never persisted) ----
+
+    // For the add form: probe with the key being typed.
+    app.post("/provider-models/probe", async (req, reply) => {
+      const parsed = providerProbeSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
       }
-      const created = deps.clientKeyRepo.create(parsed.data.label, parsed.data.allowedModels ?? [], parsed.data.allowedGroups ?? []);
-      return reply.status(201).send({ id: created.id, clientApiKey: created.clientApiKey });
+      try {
+        const models = await deps.probeService.probe(parsed.data);
+        return { models: models.map(m => ({ id: m.id, displayName: m.displayName })) };
+      } catch (err: any) {
+        return reply.status(502).send({
+          error: { code: 502, message: String(err?.message ?? err).slice(0, 300), requestId: req.id }
+        });
+      }
     });
 
-    app.delete("/client-keys/:id", async (req, reply) => {
+    // For the edit form: probe again with the stored (decrypted) key.
+    app.get("/provider-credentials/:id/models", async (req, reply) => {
       const { id } = req.params as { id: string };
-      const ok = deps.clientKeyRepo.delete(id);
-      if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
-      return { ok: true };
+      const credential = deps.providerCredentialRepo.findAllWithKeys().find(c => c.id === id);
+      if (!credential) {
+        return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      }
+      try {
+        const models = await deps.probeService.probeCredential(credential);
+        return { models: models.map(m => ({ id: m.id, displayName: m.displayName })) };
+      } catch (err: any) {
+        return reply.status(502).send({
+          error: { code: 502, message: String(err?.message ?? err).slice(0, 300), requestId: req.id }
+        });
+      }
     });
 
     // ---- Provider credentials ----
@@ -81,10 +106,7 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
           parsed.data.allowedModels ?? [],
           parsed.data.allowedGroups ?? []
         );
-        // Populate the model cache for this credential right away so admins
-        // can select models immediately; failures surface in /state or via
-        // the manual refresh button.
-        void deps.modelCacheService.refresh(created.id).catch(() => { /* logged in service */ });
+        recordAudit(deps, null, "create", "provider_credential", created.id, req.ip);
         return reply.status(201).send({ id: created.id });
       } catch (err: any) {
         return reply.status(500).send({ error: { code: 500, message: String(err?.message ?? err), requestId: req.id } });
@@ -95,6 +117,7 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       const { id } = req.params as { id: string };
       const ok = deps.providerCredentialRepo.delete(id);
       if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      recordAudit(deps, null, "delete", "provider_credential", id, req.ip);
       return { ok: true };
     });
 
@@ -115,9 +138,94 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       });
       if (!updated) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
 
-      // Re-fetch models since baseUrl or provider may have changed
-      void deps.modelCacheService.refresh(id).catch(() => { /* logged in service */ });
+      recordAudit(deps, null, "update", "provider_credential", id, req.ip);
+      return { ok: true };
+    });
 
+    // ---- Groups (routing scopes over credential×model pairs) ----
+
+    app.get("/groups", async () => deps.groupRepo.list());
+
+    app.post("/groups", async (req, reply) => {
+      const parsed = groupCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
+      }
+      try {
+        const created = deps.groupRepo.create(parsed.data);
+        recordAudit(deps, null, "create", "group", created.id, req.ip);
+        return reply.status(201).send(created);
+      } catch (err: any) {
+        const message = String(err?.message ?? err);
+        if (message.includes("UNIQUE")) {
+          return reply.status(409).send({ error: { code: 409, message: "A group with this name already exists", requestId: req.id } });
+        }
+        return reply.status(500).send({ error: { code: 500, message, requestId: req.id } });
+      }
+    });
+
+    app.put("/groups/:id", async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const parsed = groupUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
+      }
+      let updated;
+      try {
+        updated = deps.groupRepo.update(id, parsed.data);
+      } catch (err: any) {
+        const message = String(err?.message ?? err);
+        if (message.includes("UNIQUE")) {
+          return reply.status(409).send({ error: { code: 409, message: "A group with this name already exists", requestId: req.id } });
+        }
+        return reply.status(500).send({ error: { code: 500, message, requestId: req.id } });
+      }
+      if (!updated) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      recordAudit(deps, null, "update", "group", id, req.ip);
+      return updated;
+    });
+
+    app.delete("/groups/:id", async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const ok = deps.groupRepo.delete(id);
+      if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      recordAudit(deps, null, "delete", "group", id, req.ip);
+      return { ok: true };
+    });
+
+    // ---- Client keys ----
+    app.post("/client-keys", async (req, reply) => {
+      const parsed = clientKeyCreateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
+      }
+      const created = deps.clientKeyRepo.create(parsed.data.label, parsed.data.allowedModels ?? [], parsed.data.allowedGroups ?? []);
+      recordAudit(deps, null, "create", "client_key", created.id, req.ip);
+      return reply.status(201).send({ id: created.id, clientApiKey: created.clientApiKey });
+    });
+
+    app.put("/client-keys/:id", async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const parsed = clientKeyUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
+      }
+      const existing = deps.clientKeyRepo.findById(id);
+      if (!existing) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      deps.clientKeyRepo.update(id, {
+        label: parsed.data.label ?? existing.label,
+        allowed_models: parsed.data.allowedModels ?? existing.allowed_models,
+        allowed_groups: parsed.data.allowedGroups ?? existing.allowed_groups
+      });
+      recordAudit(deps, null, "update", "client_key", id, req.ip);
+      return { ok: true };
+    });
+
+    app.delete("/client-keys/:id", async (req, reply) => {
+      const { id } = req.params as { id: string };
+      const ok = deps.clientKeyRepo.delete(id);
+      if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      recordAudit(deps, null, "delete", "client_key", id, req.ip);
       return { ok: true };
     });
 
@@ -162,12 +270,6 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         request_body: log.request_body,
         response_body: log.response_body
       };
-    });
-
-    // ---- Model refresh ----
-    app.post("/models/refresh", async () => {
-      const result = await deps.modelCacheService.refresh();
-      return result;
     });
 
     // ---- Cooldowns clear ----

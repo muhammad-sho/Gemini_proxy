@@ -1,11 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AppDeps } from "../server.js";
 import { ClientDisconnectedError } from "../../application/gateway/routing.service.js";
+import { deriveModelCatalog } from "../../application/gateway/catalog.js";
 import {
   abortOnClientDisconnect,
   authenticateClient,
   extractGeminiApiKey,
   isModelAllowed,
+  resolveRoutePlan,
   sendUnauthorized
 } from "./clientAccess.js";
 
@@ -22,7 +24,7 @@ function parseModelFromPath(path: string): { modelId: string; action: string } |
  */
 export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
   return async (app) => {
-    // Model discovery passthrough
+    // Model discovery: derived from the models selected on active credentials.
     app.get("/v1beta/models", async (req, reply) => {
       const clientKey = authenticateClient(deps, extractGeminiApiKey(req));
       if (!clientKey) {
@@ -30,19 +32,16 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
         return sendUnauthorized(reply, req.id, provided ? "Invalid API key" : "Missing API key");
       }
 
-      const cached = deps.cacheRepo.getAll();
-      // Refresh silently when the cache is older than the configured TTL.
-      deps.modelCacheService.maybeRefresh();
+      const filtered = deriveModelCatalog(deps.providerCredentialRepo.findAll())
+        .filter(m => isModelAllowed(clientKey, m.id, deps));
 
-      const allowed = cached
-        .map(row => {
-          try { return JSON.parse(row.raw_data); } catch { return null; }
-        })
-        .filter(Boolean);
-
-      const filtered = allowed.filter((m: any) => isModelAllowed(clientKey, m.id, deps));
-
-      return reply.send({ models: filtered.map((m: any) => ({ name: `models/${m.id}`, ...m })) });
+      return reply.send({
+        models: filtered.map(m => ({
+          name: `models/${m.id}`,
+          displayName: m.id,
+          supportedGenerationMethods: ["generateContent"]
+        }))
+      });
     });
 
     // Generation passthrough with routing/retry/cooldown
@@ -84,7 +83,8 @@ export function gatewayRoutes(deps: AppDeps): FastifyPluginAsync {
           clientKeyId: clientKey.id,
           modelId: parsed.modelId,
           action: parsed.action,
-          abortSignal: abortOnClientDisconnect(reply)
+          abortSignal: abortOnClientDisconnect(reply),
+          plan: resolveRoutePlan(clientKey, parsed.modelId, deps)
         });
 
         const headers: Record<string, string> = { "content-type": result.headers["content-type"] ?? "application/json" };

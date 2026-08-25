@@ -41,9 +41,9 @@ export function sendUnauthorized(reply: FastifyReply, requestId: string, message
 }
 
 /**
- * Allowlist enforcement shared by both gateways: an empty allowlist pair means
- * unrestricted access; otherwise the model must be listed directly or reached
- * through one of the client key's model groups.
+ * Permission check shared by both gateways: an empty allowlist pair means
+ * unrestricted access; otherwise the model must be listed directly on the
+ * client key or reachable through one of its groups (any pair with that model).
  */
 export function isModelAllowed(
   clientKey: ClientKey,
@@ -53,8 +53,27 @@ export function isModelAllowed(
   const hasRestrictions = clientKey.allowed_models.length > 0 || clientKey.allowed_groups.length > 0;
   if (!hasRestrictions) return true;
   if (clientKey.allowed_models.includes(modelId)) return true;
-  const groups = deps.groupRepo.expandModels(clientKey.allowed_groups);
-  return groups.includes(modelId);
+  return deps.groupRepo.expandModelIds(clientKey.allowed_groups).includes(modelId);
+}
+
+/**
+ * Routing plan for a request: the first group (in client-key order) that
+ * contains a pair for this model scopes candidates to that group's
+ * credentials and applies its routing strategies. Plain model assignments
+ * fall back to basic least-used across every capable credential.
+ */
+export function resolveRoutePlan(
+  clientKey: ClientKey,
+  modelId: string,
+  deps: AppDeps
+): { credentialIds?: string[]; primary?: import("../../domain/routing/keySelection.js").SelectionStrategy; fallback?: import("../../domain/routing/keySelection.js").SelectionStrategy } | undefined {
+  const resolved = deps.groupRepo.resolveForModel(clientKey.allowed_groups, modelId);
+  if (!resolved) return undefined;
+  return {
+    credentialIds: resolved.credentialIds,
+    primary: resolved.routingStrategy,
+    fallback: resolved.fallbackStrategy ?? undefined
+  };
 }
 
 /**

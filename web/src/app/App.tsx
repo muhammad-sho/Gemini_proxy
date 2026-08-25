@@ -4,11 +4,11 @@ import { useApp } from "./../auth/useAuth.js";
 import { OverviewPage } from "../features/overview/OverviewPage.js";
 import { ClientKeysPage } from "../features/client-keys/ClientKeysPage.js";
 import { ProviderCredentialsPage } from "../features/provider-credentials/ProviderCredentialsPage.js";
-import { ModelsPage } from "../features/models/ModelsPage.js";
+import { GroupsPage } from "../features/groups/GroupsPage.js";
 import { LogsPage } from "../features/logs/LogsPage.js";
 import { SettingsPage } from "../features/settings/SettingsPage.js";
 
-const TABS = ["Overview", "Client keys", "Providers", "Models", "Logs", "Settings"] as const;
+const TABS = ["Overview", "Client keys", "Providers", "Groups", "Logs", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -59,7 +59,7 @@ export function App() {
             <OverviewPage state={state} reload={reload} />
             {tab === "Client keys" && <ClientKeysPage state={state} reload={reload} />}
             {tab === "Providers" && <ProviderCredentialsPage state={state} reload={reload} />}
-            {tab === "Models" && <ModelsPage state={state} reload={reload} />}
+            {tab === "Groups" && <GroupsPage state={state} reload={reload} />}
             {tab === "Logs" && <LogsPage />}
             {tab === "Settings" && <SettingsPage />}
           </>

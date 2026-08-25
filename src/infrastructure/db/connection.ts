@@ -165,7 +165,7 @@ export function runMigrations(db: Database.Database): void {
     `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at)`,
     `CREATE INDEX IF NOT EXISTS idx_admin_sessions_expires ON admin_sessions(expires_at)`,
 
-    // Model groups
+    // Model groups (pair-based: a group targets specific credential×model combos)
     `CREATE TABLE IF NOT EXISTS model_groups (
       group_name TEXT PRIMARY KEY,
       models TEXT NOT NULL DEFAULT '[]',
@@ -173,7 +173,29 @@ export function runMigrations(db: Database.Database): void {
       routing_strategy TEXT NOT NULL DEFAULT 'least_used' CHECK (routing_strategy IN ('least_used', 'fastest', 'smartest', 'cost_optimized')),
       created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
       updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-    )`
+    )`,
+
+    // v2: live model probing replaces the cache; groups become credential×model pairs
+    `DROP TABLE IF EXISTS model_cache`,
+    `DROP TABLE IF EXISTS models`,
+    `DROP TABLE IF EXISTS model_groups`,
+    `CREATE TABLE model_groups (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      routing_strategy TEXT NOT NULL DEFAULT 'least_used' CHECK (routing_strategy IN ('round_robin', 'least_used', 'fastest', 'smartest')),
+      fallback_strategy TEXT CHECK (fallback_strategy IS NULL OR fallback_strategy IN ('round_robin', 'least_used', 'fastest', 'smartest')),
+      created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+      updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    )`,
+    `CREATE TABLE model_group_pairs (
+      group_id TEXT NOT NULL REFERENCES model_groups(id) ON DELETE CASCADE,
+      credential_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      PRIMARY KEY (group_id, credential_id, model_id)
+    )`,
+    `CREATE INDEX idx_model_group_pairs_target ON model_group_pairs(credential_id, model_id)`,
+    `ALTER TABLE model_credential_state ADD COLUMN avg_latency_ms INTEGER`
   ];
 
   // Apply migrations

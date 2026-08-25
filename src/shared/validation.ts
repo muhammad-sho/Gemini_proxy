@@ -86,3 +86,46 @@ export interface ChatMessage {
   content?: string | null;
   name?: string;
 }
+
+// ---- Groups and routing strategies ----
+
+export const routingStrategySchema = z.enum(["round_robin", "least_used", "fastest", "smartest"]);
+export type RoutingStrategyInput = z.infer<typeof routingStrategySchema>;
+
+const groupPairSchema = z.object({
+  credentialId: z.string().min(1),
+  modelId: z.string().min(1)
+});
+
+export const groupCreateSchema = z.object({
+  name: z.string().min(1).max(64),
+  description: z.string().max(256).optional(),
+  routingStrategy: routingStrategySchema.default("least_used"),
+  fallbackStrategy: routingStrategySchema.nullish(),
+  pairs: z.array(groupPairSchema).default([])
+});
+
+export const groupUpdateSchema = z.object({
+  name: z.string().min(1).max(64).optional(),
+  description: z.string().max(256).optional(),
+  routingStrategy: routingStrategySchema.optional(),
+  fallbackStrategy: routingStrategySchema.nullish(),
+  pairs: z.array(groupPairSchema).optional()
+});
+
+export const clientKeyUpdateSchema = z.object({
+  label: z.string().min(1).max(128).optional(),
+  allowedModels: z.array(z.string()).optional(),
+  allowedGroups: z.array(z.string()).optional()
+});
+
+export const providerProbeSchema = z.object({
+  provider: z.enum(["gemini", "openai_compatible"]),
+  apiKey: z.string().min(1),
+  baseUrl: z.string().url().optional()
+});
+
+export type GroupCreate = z.infer<typeof groupCreateSchema>;
+export type GroupUpdate = z.infer<typeof groupUpdateSchema>;
+export type ClientKeyUpdate = z.infer<typeof clientKeyUpdateSchema>;
+export type ProviderProbe = z.infer<typeof providerProbeSchema>;

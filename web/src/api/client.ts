@@ -1,8 +1,35 @@
+export interface GroupPair {
+  credentialId: string;
+  modelId: string;
+}
+
+export interface GroupCreateInput {
+  name: string;
+  description?: string;
+  routingStrategy: Group["routingStrategy"];
+  fallbackStrategy?: Group["fallbackStrategy"];
+  pairs: GroupPair[];
+}
+
+export interface Group {
+  id: string;
+  name: string;
+  description: string;
+  routingStrategy: "round_robin" | "least_used" | "fastest" | "smartest";
+  fallbackStrategy: "round_robin" | "least_used" | "fastest" | "smartest" | null;
+  pairs: GroupPair[];
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AdminState {
-  clientKeys: Array<{ id: string; label: string; allowedModels: string[]; createdAt: number }>;
+  clientKeys: Array<{
+    id: string; label: string; allowedModels: string[]; allowedGroups: string[]; createdAt: number;
+  }>;
   credentials: Array<{ id: string; label: string; provider: string; baseUrl: string | null; allowedModels: string[]; createdAt: number }>;
-  models: Array<{ id: string; name: string; displayName?: string }>;
-  groups: unknown[];
+  models: Array<{ id: string }>;
+  pairs: Array<{ credentialId: string; credentialLabel: string; modelId: string }>;
+  groups: Group[];
   usageByModel: Record<string, number>;
   cooling: Array<{ model_id: string; credential_id: string; cooldown_until: number; cooldown_reason: string | null }>;
 }
@@ -112,8 +139,10 @@ export const api = {
   getSettings: () => request<ProxySettings>("GET", "/api/admin/v1/settings"),
   updateSettings: (patch: Partial<ProxySettings>) => request<ProxySettings>("PUT", "/api/admin/v1/settings", patch),
 
-  createClientKey: (label: string, allowedModels: string[]) =>
-    request<{ id: string; clientApiKey: string }>("POST", "/api/admin/v1/client-keys", { label, allowedModels }),
+  createClientKey: (label: string, allowedModels: string[], allowedGroups: string[]) =>
+    request<{ id: string; clientApiKey: string }>("POST", "/api/admin/v1/client-keys", { label, allowedModels, allowedGroups }),
+  updateClientKey: (id: string, patch: { label?: string; allowedModels?: string[]; allowedGroups?: string[] }) =>
+    request<{ ok: true }>("PUT", `/api/admin/v1/client-keys/${id}`, patch),
   deleteClientKey: (id: string) => request<{ ok: true }>("DELETE", `/api/admin/v1/client-keys/${id}`),
 
   createCredential: (input: { label: string; provider: string; apiKey: string; baseUrl?: string; allowedModels: string[] }) =>
@@ -122,7 +151,16 @@ export const api = {
     request<{ ok: true }>("PUT", `/api/admin/v1/provider-credentials/${id}`, input),
   deleteCredential: (id: string) => request<{ ok: true }>("DELETE", `/api/admin/v1/provider-credentials/${id}`),
 
-  refreshModels: () => request<{ refreshed: number; errors: string[] }>("POST", "/api/admin/v1/models/refresh"),
+  probeProviderModels: (input: { provider: string; apiKey: string; baseUrl?: string }) =>
+    request<{ models: Array<{ id: string; displayName: string }> }>("POST", "/api/admin/v1/provider-models/probe", input),
+  getCredentialModels: (id: string) =>
+    request<{ models: Array<{ id: string; displayName: string }> }>("GET", `/api/admin/v1/provider-credentials/${id}/models`),
+
+  listGroups: () => request<Group[]>("GET", "/api/admin/v1/groups"),
+  createGroup: (input: GroupCreateInput) => request<Group>("POST", "/api/admin/v1/groups", input),
+  updateGroup: (id: string, patch: Partial<GroupCreateInput>) =>
+    request<Group>("PUT", `/api/admin/v1/groups/${id}`, patch),
+  deleteGroup: (id: string) => request<{ ok: true }>("DELETE", `/api/admin/v1/groups/${id}`),
   clearCooldowns: () => request<{ cleared: number }>("POST", "/api/admin/v1/cooldowns/clear"),
 
   listLogs: (params: { outcome?: string; q?: string; limit?: number; offset?: number }) => {

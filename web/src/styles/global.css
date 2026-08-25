@@ -76,8 +76,9 @@ fieldset { border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
 legend { color: var(--text-dim); font-size: 12px; padding: 0 6px; }
 
 .model-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 4px; max-height: 220px; overflow-y: auto; }
-.model-option { display: flex; gap: 8px; align-items: center; font-size: 13px; padding: 3px 4px; border-radius: 4px; color: var(--text); }
+.model-option { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 13px; padding: 3px 4px; border-radius: 4px; color: var(--text); background: none; border: none; cursor: pointer; text-align: left; }
 .model-option:hover { background: var(--bg-hover); }
+.model-option.selected { background: var(--bg-hover, rgba(127,127,127,.15)); }
 
 /* Tables */
 .table { width: 100%; border-collapse: collapse; margin-top: 8px; }

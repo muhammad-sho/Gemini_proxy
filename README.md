@@ -31,7 +31,7 @@ The server is a modular TypeScript/Fastify application. One process hosts **thre
 | **OpenAI gateway** | `18771` | OpenAI protocol only (`/v1/chat/completions`, `/v1/models`) |
 | **Dashboard + admin API** | `18765` | Web UI under `/`, admin JSON under `/api/admin/v1/*`, health checks |
 
-All three are published on every interface by default (`GATEWAY_BIND` / `ADMIN_BIND` in `.env`). When running from source without Docker, the dashboard binds to loopback unless `ADMIN_HOST` says otherwise.
+All three ports are published as-is by the shipped compose file. To change a public port or restrict an interface, edit the `ports:` mappings in `docker-compose.yml`. Source runs (no Docker) bind the dashboard to loopback unless `ADMIN_HOST` says otherwise.
 
 Because each surface always knows which wire format it is receiving, there is no format detection: the Gemini gateway forwards Gemini bodies (translating per provider adapter), while the OpenAI gateway translates chat-completion requests into the canonical internal shape before routing.
 
@@ -81,7 +81,7 @@ First-time setup:
 1. Open the dashboard and create the admin password (first run only).
 2. Open **Providers** and add your Google Gemini API keys.
 3. Open **Client Keys** and generate a key for your application (shown once).
-4. Optionally hit **Refresh cache** under **Models**, and tune behavior under **Settings**.
+4. Tune routing and log retention under **Settings** if needed — everything else runs on sensible defaults.
 
 All app data lives in the `./data` folder next to `docker-compose.yml` — that single folder is your backup.
 
@@ -113,10 +113,10 @@ Sign in at `http://localhost:18765` (or wherever `ADMIN_HOST:ADMIN_PORT` points;
 
 | Tab | What it does |
 | --- | --- |
-| **Overview** | Totals (client keys, providers, models, requests today), active cooldowns, usage per model/key, refresh-models and clear-cooldowns actions |
+| **Overview** | Totals (client keys, provider keys, groups), active cooldowns, usage per model/key, clear-cooldowns action |
 | **Client keys** | Generate/revoke the API keys your applications use; restrict by model or group |
-| **Providers** | Add/remove Google Gemini (or OpenAI-compatible) credentials; optional per-credential base URL and model allowlist |
-| **Models** | Cached model list from Google with manual refresh |
+| **Providers** | Add/edit provider keys; available models are fetched live from the upstream while you type — pick the ones this key serves (nothing else is stored) |
+| **Groups** | Route over explicit key × model targets with a rotation role: least used, round robin, fastest, smartest (+ optional fallback) |
 | **Logs** | Every request with outcome/status/attempt filters and body search; click a row for the full timeline and payloads |
 | **Settings** | Routing behavior and log retention, applied live — no restart needed (see "Configuration") |
 
@@ -178,21 +178,22 @@ Admin API lives under `/api/admin/v1/*` on the dashboard port and requires the s
 
 # Ports and Exposure
 
-All three surfaces are published on every interface by default, so the dashboard works out of the box from any machine that can reach the server. The gateway ports only accept proxy client keys; the dashboard port (`18765`) holds admin power (credentials management, logs with payloads), so lock it down if the server is shared or internet-facing.
+The shipped compose file publishes all three surfaces as-is, so the dashboard works out of the box from any machine that can reach the server. The gateway ports only accept proxy client keys; the dashboard port (`18765`) holds admin power (credentials management, logs with payloads), so lock it down if the server is shared or internet-facing:
 
-To keep the dashboard reachable from the local machine only:
-
-1. **Compose**: set `ADMIN_BIND=127.0.0.1` in `.env` and restart (`docker compose up -d`). Then manage a remote server via SSH tunnel: `ssh -L 18765:127.0.0.1:18765 user@server`.
+1. **Firewall / host binding**: edit the mapping to `- "127.0.0.1:18765:18765"` in `docker-compose.yml` and `docker compose up -d`. Manage a remote server via SSH tunnel: `ssh -L 18765:127.0.0.1:18765 user@server`.
 2. **Reverse proxy** with its own authentication in front of `/`, keeping the port firewalled.
-3. **Source runs**: `ADMIN_HOST=127.0.0.1` (already the default without Docker).
-
-Similarly `GATEWAY_BIND=127.0.0.1` keeps both API gateways LAN-only.
+3. **Source runs**: `ADMIN_HOST=127.0.0.1` (the default without Docker).
 
 ---
 
 # Key Selection and Cooldowns
 
-For each model the proxy picks the credential with the fewest successful requests in the current window (least-used rotation). If that attempt fails, the next-best candidate is tried until the configured attempt count or total deadline (dashboard **Settings**) is exhausted; the last upstream response is relayed as-is.
+Routing always happens over explicit key × model pairs — `key1/model1` and `key2/model1` are different targets.
+
+* **Plain model assignment**: a client key allowed to use a model rotates across *every* key serving it, least-used first.
+* **Group assignment**: a group scopes requests to exactly its targets and applies its routing role — `least_used`, `round_robin`, `fastest` (lowest measured latency) or `smartest` (fewest errors, then fastest) — plus an optional fallback role used for later attempts after a failure.
+
+If an attempt fails, the next-best candidate under the active strategy is tried until the configured attempt count or total deadline (dashboard **Settings**) is exhausted; the last upstream response is relayed as-is.
 
 | Failure | Classification | Cooldown |
 | --- | --- | --- |
@@ -207,11 +208,12 @@ Cooled-down keys drop out of rotation but remain last-resort candidates (soonest
 
 # Configuration
 
-Configuration lives in three tiers, from most to least common:
+Configuration lives in two tiers:
 
-1. **Dashboard → Settings tab** (applied live, no restart): upstream attempts, total deadline, per-attempt timeout, model-cache TTL, log retention and stored body size. Persisted in the database.
-2. **`.env`** (deployment only — see `.env.example`): ports and bind addresses for the three surfaces, `LOG_LEVEL`, `TRUST_PROXY`.
-3. **Built-in defaults**: transport safety limits (10 MB request bodies, 50 MB stored responses) are fixed and intentionally not configurable.
+1. **Dashboard → Settings tab** (applied live, no restart): upstream attempts, total deadline, per-attempt timeout, log retention and stored body size. Persisted in the database.
+2. **Built-in defaults for everything else.** Deployment-level values (ports, hosts, `LOG_LEVEL`, `TRUST_PROXY`) are plain environment variables when running from source, or edited directly in `docker-compose.yml`; unset values fall back to defaults. Transport safety limits (10 MB request bodies, 50 MB stored responses) are fixed and intentionally not configurable.
+
+There is no `.env` file and no required configuration: `docker compose up -d` and create the admin password on first open.
 
 There are no secrets to configure. The admin password is created in the browser on first open; the encryption key for provider credentials is generated automatically inside the data directory.
 
@@ -244,16 +246,14 @@ sqlite3 data/gemini-proxy.db ".backup 'data/backups/gemini-proxy-$(date +%F).db'
 
 # Environment Variables
 
-Optional deployment knobs (see `.env.example`; Docker Compose reads it automatically):
+Everything runs on built-in defaults — there is no `.env` file and nothing to configure. Under Docker, edit `docker-compose.yml` directly (port mappings; optional `LOG_LEVEL` / `TRUST_PROXY` overrides are shown commented-out inside). When running from source, these environment variables are understood:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
-| `GATEWAY_BIND` / `ADMIN_BIND` | `0.0.0.0` | Host interfaces the ports are published on (compose); `ADMIN_BIND=127.0.0.1` keeps the dashboard local |
 | `LOG_LEVEL` | `info` (`debug` in dev) | Standard pino levels: `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
-
-Source runs (no Docker) can additionally use `GATEWAY_HOST` / `ADMIN_HOST` to set app bind addresses directly (`ADMIN_HOST` defaults to loopback there).
+| `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
+| `GATEWAY_HOST` / `ADMIN_HOST` | `0.0.0.0` / `127.0.0.1` | Bind addresses (dashboard stays local by default without Docker) |
 
 All secrets are masked in logs. Readiness (`/health/ready` on the admin port) checks database, schema version, and encryption-key availability.
 
@@ -267,13 +267,13 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 
 # Security
 
-* **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; the dashboard is a separate port. It is published openly by default for easy self-hosting — set `ADMIN_BIND=127.0.0.1` (see "Ports and Exposure") on shared or internet-facing machines.
+* **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; the dashboard is a separate port. It is published openly by default for easy self-hosting — bind it to loopback (see "Ports and Exposure") on shared or internet-facing machines.
 * **No secrets in config files**: the admin password is created in the browser on first open (one-time setup endpoint; refuses once an account exists) and stored as a bcrypt hash.
 * Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login and setup are rate-limited and audited.
 * Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
 * Provider credentials encrypted at rest with AES-256-GCM; the key is generated automatically inside `data/` — back up that folder to back up everything.
 * Helmet headers on every surface, CSP for the dashboard; body-size limits everywhere; per-IP rate limiting on all three surfaces.
-* Exposing the dashboard on shared networks? Set `ADMIN_BIND=127.0.0.1` or put an authenticated reverse proxy in front of it.
+* Exposing the dashboard on shared networks? Bind it to loopback (`"127.0.0.1:18765:18765"`) or put an authenticated reverse proxy in front of it.
 
 ---
 
@@ -284,7 +284,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
 * **Readiness failing on encryption** — the app cannot write its encryption key into `data/`; check disk space and folder permissions.
 * **Forgot the admin password?** Stop the app, run `sqlite3 data/gemini-proxy.db "DELETE FROM admin_users; DELETE FROM admin_sessions;"`, start again — the dashboard offers first-run setup once more (client keys and provider credentials are unaffected).
-* **Dashboard unreachable from another machine (Docker)** — check that `ADMIN_BIND` in `.env` isn't `127.0.0.1`, and that no firewall blocks the port. Source runs bind the dashboard to loopback by default (`ADMIN_HOST`).
+* **Dashboard unreachable from another machine (Docker)** — check that the `ports:` mapping for 18765 isn't prefixed with `127.0.0.1:`, and that no firewall blocks the port. Source runs bind the dashboard to loopback by default (`ADMIN_HOST`).
 * **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 
 ---

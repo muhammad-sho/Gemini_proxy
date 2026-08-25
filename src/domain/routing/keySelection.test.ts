@@ -9,6 +9,9 @@ function mk(partial: Partial<KeyCandidate> & { credentialId: string }): KeyCandi
     state: "ready",
     cooldownUntil: null,
     useCount: 0,
+    lastUsedAt: null,
+    errorCount: 0,
+    avgLatencyMs: null,
     ...partial
   };
 }
@@ -65,5 +68,49 @@ describe("orderCandidates", () => {
     const o2 = orderCandidates([...a].reverse(), NOW);
     expect(o1.map(o => o.candidate.credentialId)).toEqual(["a", "b"]);
     expect(o2.map(o => o.candidate.credentialId)).toEqual(["a", "b"]);
+  });
+
+  it("round_robin orders by least recently used", () => {
+    const ordered = orderCandidates(
+      [
+        mk({ credentialId: "recent", lastUsedAt: NOW - 1_000 }),
+        mk({ credentialId: "older", lastUsedAt: NOW - 60_000 }),
+        mk({ credentialId: "never", lastUsedAt: null })
+      ],
+      NOW,
+      "round_robin"
+    );
+    expect(ordered.map(o => o.candidate.credentialId)).toEqual(["never", "older", "recent"]);
+  });
+
+  it("fastest orders by lowest known latency, unknown latency last", () => {
+    const ordered = orderCandidates(
+      [
+        mk({ credentialId: "slow", avgLatencyMs: 900 }),
+        mk({ credentialId: "unknown", avgLatencyMs: null }),
+        mk({ credentialId: "fast", avgLatencyMs: 120 })
+      ],
+      NOW,
+      "fastest"
+    );
+    expect(ordered.map(o => o.candidate.credentialId)).toEqual(["fast", "slow", "unknown"]);
+  });
+
+  it("smartest prefers the lowest error rate, then latency", () => {
+    const ordered = orderCandidates(
+      [
+        // 50% errors but very fast
+        mk({ credentialId: "flaky-fast", useCount: 10, errorCount: 5, avgLatencyMs: 100 }),
+        // 10% errors, moderate latency
+        mk({ credentialId: "reliable", useCount: 10, errorCount: 1, avgLatencyMs: 400 }),
+        // never used, no data
+        mk({ credentialId: "fresh", useCount: 0, errorCount: 0, avgLatencyMs: null })
+      ],
+      NOW,
+      "smartest"
+    );
+    expect(ordered[0].candidate.credentialId).toBe("fresh"); // 0% error rate
+    expect(ordered[1].candidate.credentialId).toBe("reliable");
+    expect(ordered[2].candidate.credentialId).toBe("flaky-fast");
   });
 });

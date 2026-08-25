@@ -20,9 +20,15 @@ async function startMock(): Promise<number> {
     req.on("end", () => {
       const auth = String(req.headers["x-goog-api-key"] ?? "");
 
-      // Model listing (triggered by credential creation) — not counted as
-      // routing attempts. Must not swallow /models/{model}:action URLs.
+      // Model listing (triggered by credential creation/probing) — not counted
+      // as routing attempts. Must not swallow /models/{model}:action URLs.
+      // An invalid upstream key is rejected, like the real API.
       if (req.url?.startsWith("/v1beta/models") && !req.url.includes(":")) {
+        if (auth === "BAD_KEY") {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: { code: 400, message: "API key not valid." } }));
+          return;
+        }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ models: [{ name: "models/mock-probe", displayName: "Mock Probe" }] }));
         return;
@@ -67,6 +73,7 @@ describe("split gateway surfaces", () => {
   let adminCookie: string;
   let csrf: string;
   let clientKey: string;
+  let goodCredentialId = "";
 
   /** Admin request headers incl. CSRF echo, mirroring the dashboard client. */
   const adminHeaders = (): Record<string, string> => ({
@@ -138,12 +145,13 @@ describe("split gateway surfaces", () => {
     });
     expect(badLogin.statusCode).toBe(401);
 
-    // Two credentials: bad key first (older), good key second.
+    // Two credentials: bad key first (older), good key second. Selected models
+    // define what each credential can serve (live retrieval is never stored).
     const credBad = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
-      payload: { label: "bad", provider: "gemini", apiKey: "BAD_KEY", baseUrl: `http://127.0.0.1:${port}` }
+      payload: { label: "bad", provider: "gemini", apiKey: "BAD_KEY", baseUrl: `http://127.0.0.1:${port}`, allowedModels: ["gemini-2.0-flash"] }
     });
     expect(credBad.statusCode).toBe(201);
 
@@ -151,9 +159,14 @@ describe("split gateway surfaces", () => {
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
-      payload: { label: "good", provider: "gemini", apiKey: "GOOD_KEY", baseUrl: `http://127.0.0.1:${port}` }
+      payload: {
+        label: "good", provider: "gemini", apiKey: "GOOD_KEY",
+        baseUrl: `http://127.0.0.1:${port}`,
+        allowedModels: ["gemini-2.0-flash", "mock-probe"]
+      }
     });
     expect(credGood.statusCode).toBe(201);
+    goodCredentialId = credGood.json().id;
 
     const ck = await adminApp.inject({
       method: "POST",
@@ -242,7 +255,7 @@ describe("split gateway surfaces", () => {
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
-      payload: { label: "quota", provider: "gemini", apiKey: "QUOTA_KEY", baseUrl: `http://127.0.0.1:${port}` }
+      payload: { label: "quota", provider: "gemini", apiKey: "QUOTA_KEY", baseUrl: `http://127.0.0.1:${port}`, allowedModels: ["gemini-2.0-flash"] }
     });
     expect(credQuota.statusCode).toBe(201);
 
@@ -262,6 +275,162 @@ describe("split gateway surfaces", () => {
       .prepare("SELECT DISTINCT cooldown_reason FROM model_credential_state WHERE state='cooling'")
       .all() as any[];
     expect(reasons.some(r => r.cooldown_reason === "daily_quota")).toBe(true);
+  });
+
+  // ---- Groups and live model probing ----
+
+  it("probes models live for the add form and per stored credential", async () => {
+    const port = (mock.address() as { port: number }).port;
+
+    const probe = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/provider-models/probe",
+      headers: adminHeaders(),
+      payload: { provider: "gemini", apiKey: "GOOD_KEY", baseUrl: `http://127.0.0.1:${port}` }
+    });
+    expect(probe.statusCode).toBe(200);
+    expect(probe.json().models.some((m: any) => m.id === "mock-probe")).toBe(true);
+
+    const probeBad = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/provider-models/probe",
+      headers: adminHeaders(),
+      payload: { provider: "gemini", apiKey: "BAD_KEY", baseUrl: `http://127.0.0.1:${port}` }
+    });
+    expect(probeBad.statusCode).toBe(502);
+
+    const stored = await adminApp.inject({
+      method: "GET",
+      url: `/api/admin/v1/provider-credentials/${goodCredentialId}/models`,
+      headers: { cookie: adminCookie }
+    });
+    expect(stored.statusCode).toBe(200);
+    expect(stored.json().models.some((m: any) => m.id === "mock-probe")).toBe(true);
+  });
+
+  it("derives the model list from selected credentials and serves OpenAI format", async () => {
+    const res = await openaiApp.inject({
+      method: "GET",
+      url: "/v1/models",
+      headers: { authorization: `Bearer ${clientKey}` }
+    });
+    expect(res.statusCode).toBe(200);
+    const ids = res.json().data.map((m: any) => m.id);
+    expect(ids).toContain("gemini-2.0-flash");
+    expect(ids).toContain("mock-probe");
+
+    const geminiList = await geminiApp.inject({
+      method: "GET",
+      url: "/v1beta/models",
+      headers: { "x-goog-api-key": clientKey }
+    });
+    expect(geminiList.statusCode).toBe(200);
+    expect(geminiList.json().models.some((m: any) => m.name === "models/mock-probe")).toBe(true);
+  });
+
+  it("creates a group over key×model pairs, routes through it with its strategy, and scopes candidates", async () => {
+    // Group containing ONLY the good credential for this model.
+    const created = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/groups",
+      headers: adminHeaders(),
+      payload: {
+        name: "fast-tier",
+        description: "fast keys only",
+        routingStrategy: "round_robin",
+        fallbackStrategy: "least_used",
+        pairs: [{ credentialId: goodCredentialId, modelId: "gemini-2.0-flash" }]
+      }
+    });
+    expect(created.statusCode).toBe(201);
+    const group = created.json();
+    expect(group.pairs).toHaveLength(1);
+
+    // Duplicate name is rejected
+    const dup = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/groups",
+      headers: adminHeaders(),
+      payload: { name: "fast-tier", routingStrategy: "least_used", pairs: [] }
+    });
+    expect(dup.statusCode).toBe(409);
+
+    // Client key assigned to the group can use the model via the group's
+    // candidate scope — the bad credential is not part of the group.
+    hits.BAD_KEY = 0;
+    const ckGroup = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/client-keys",
+      headers: adminHeaders(),
+      payload: { label: "grouped", allowedGroups: ["fast-tier"] }
+    });
+    const groupedKey = ckGroup.json().clientApiKey;
+
+    const before = hits.GOOD_KEY ?? 0;
+    const res = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:generateContent",
+      headers: { "x-goog-api-key": groupedKey, "content-type": "application/json" },
+      payload: { contents: [{ parts: [{ text: "via group" }] }] }
+    });
+    expect(res.statusCode).toBe(200);
+    expect(hits.BAD_KEY).toBe(0);
+    expect(hits.GOOD_KEY).toBe(before + 1);
+
+    // A model not present in any of the group's pairs is denied.
+    await adminApp.inject({
+      method: "PUT",
+      url: `/api/admin/v1/groups/${group.id}`,
+      headers: adminHeaders(),
+      payload: { pairs: [{ credentialId: goodCredentialId, modelId: "other-model" }] }
+    });
+    const denied = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:generateContent",
+      headers: { "x-goog-api-key": groupedKey, "content-type": "application/json" },
+      payload: { contents: [{ parts: [{ text: "nope" }] }] }
+    });
+    expect(denied.statusCode).toBe(403);
+
+    // Cleanup: restore pairs so later tests are unaffected
+    await adminApp.inject({
+      method: "PUT",
+      url: `/api/admin/v1/groups/${group.id}`,
+      headers: adminHeaders(),
+      payload: { pairs: [{ credentialId: goodCredentialId, modelId: "gemini-2.0-flash" }] }
+    });
+
+    const deleted = await adminApp.inject({
+      method: "DELETE",
+      url: `/api/admin/v1/groups/${group.id}`,
+      headers: adminHeaders()
+    });
+    expect(deleted.statusCode).toBe(200);
+  });
+
+  it("updates client-key permissions", async () => {
+    const ck = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/client-keys",
+      headers: adminHeaders(),
+      payload: { label: "editable" }
+    });
+    const id = ck.json().id;
+    const updated = await adminApp.inject({
+      method: "PUT",
+      url: `/api/admin/v1/client-keys/${id}`,
+      headers: adminHeaders(),
+      payload: { allowedModels: ["gemini-2.0-flash"] }
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const state = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/state",
+      headers: { cookie: adminCookie }
+    });
+    const key = state.json().clientKeys.find((k: any) => k.id === id);
+    expect(key.allowedModels).toEqual(["gemini-2.0-flash"]);
   });
 
   // ---- Admin surface ----

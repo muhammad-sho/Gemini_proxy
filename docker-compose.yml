@@ -1,42 +1,29 @@
-# All configuration lives in .env (copy .env.example). This file only wires
-# the container: volume, port publishing, and constants that MUST differ
-# inside the container. No secrets needed — the admin password is created on
-# first open of the dashboard.
+# No configuration required — the app boots on defaults and the admin password
+# is created on first open of the dashboard. All data lives in ./data next to
+# this file. Runtime behavior (routing, log retention) is tuned in the
+# dashboard's Settings tab.
 
 services:
   gemini-proxy:
     image: ghcr.io/muhammad-sho/gemini-proxy:latest
     container_name: gemini-proxy
     restart: unless-stopped
-
-    # Forward every variable in .env into the container. Optional, so a bare
-    # `docker compose up -d` also works.
-    env_file:
-      - path: .env
-        required: false
-
+    ports:
+      - "18770:18770"   # Gemini-protocol gateway (/v1beta/*)
+      - "18771:18771"   # OpenAI-protocol gateway (/v1/models, /v1/chat/completions)
+      - "18765:18765"   # Dashboard + admin API (web UI under /)
+    volumes:
+      - ./data:/data:Z
     environment:
-      # Container constants — these intentionally override .env: Docker can
-      # only publish ports to processes bound on 0.0.0.0, so all three
-      # surfaces bind every interface HERE; exposure is decided by the
-      # host-side address in the `ports` block below. DATA_DIR points the app
-      # at the mounted volume.
       NODE_ENV: production
       DATA_DIR: /data
       GATEWAY_HOST: 0.0.0.0
       ADMIN_HOST: 0.0.0.0
+      # ---- optional overrides (everything else uses built-in defaults) ----
+      # LOG_LEVEL: debug       # fatal | error | warn | info | debug | trace
+      # TRUST_PROXY: "true"    # behind a reverse proxy that sets X-Forwarded-*
+      # To move a port publicly, change the HOST side of a mapping above,
+      # e.g. "8080:18765" serves the dashboard at http://host:8080.
 
-    volumes:
-      - ./data:/data:Z
-
-    ports:
-      # Format: <host-bind>:<host-port>:<container-port>. All surfaces are
-      # published on every interface by default; set ADMIN_BIND=127.0.0.1 in
-      # .env to keep the dashboard reachable from this machine only (then use
-      # an SSH tunnel from elsewhere).
-      - "${GATEWAY_BIND:-0.0.0.0}:${GEMINI_PORT:-18770}:${GEMINI_PORT:-18770}"   # Gemini API
-      - "${GATEWAY_BIND:-0.0.0.0}:${OPENAI_PORT:-18771}:${OPENAI_PORT:-18771}"   # OpenAI API
-      - "${ADMIN_BIND:-0.0.0.0}:${ADMIN_PORT:-18765}:${ADMIN_PORT:-18765}"       # Dashboard/admin
-
-# Backup = back up ./data. It holds the SQLite database and everything else
-# the app needs (see README "Backup and migration").
+# Backup = back up ./data (stop the container first, or use sqlite3 ".backup").
+# See README "Backup and migration".

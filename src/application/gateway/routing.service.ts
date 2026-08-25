@@ -7,11 +7,20 @@ import type { ModelCredentialStateRepository } from "../../infrastructure/db/rep
 import type { ProviderCredentialRepository } from "../../infrastructure/db/repositories/providerCredentials.js";
 import type { UsageEventRepository } from "../../infrastructure/db/repositories/usageEvents.js";
 import type { RequestLogRepository } from "../../infrastructure/db/repositories/requestLogs.js";
-import type { ModelCacheRepository } from "../../infrastructure/db/repositories/modelCache.js";
 import { randomUUID } from "crypto";
 import type { Logger } from "../../infrastructure/logging/logger.js";
 import { RESPONSE_LIMIT_BYTES } from "../../shared/constants.js";
 import type { ProxySettings, SettingsService } from "../../domain/settings/settingsService.js";
+import type { SelectionStrategy } from "./../../domain/routing/keySelection.js";
+
+export interface RoutePlan {
+  /** Restrict candidates to these credential ids (group-scoped routing). */
+  credentialIds?: string[];
+  /** Ordering for the first pick; defaults to least_used. */
+  primary?: SelectionStrategy;
+  /** Re-ranking applied to the remaining pool after a failed attempt. */
+  fallback?: SelectionStrategy;
+}
 
 export interface UpstreamResult {
   status: number;
@@ -39,6 +48,8 @@ export interface RouteRequestInput {
   modelId: string;
   action: string; // e.g. generateContent
   abortSignal: AbortSignal;
+  /** Group-derived routing constraints (strategies + candidate scope). */
+  plan?: RoutePlan;
 }
 
 export class RoutingService {
@@ -49,7 +60,6 @@ export class RoutingService {
     private stateRepo: ModelCredentialStateRepository,
     private usageRepo: UsageEventRepository,
     private logRepo: RequestLogRepository,
-    private cacheRepo: ModelCacheRepository,
     private logger: Logger,
     geminiAdapter: GeminiAdapter,
     openaiAdapter: OpenAICompatibleAdapter,
@@ -70,16 +80,22 @@ export class RoutingService {
       timeline.push({ at: new Date().toISOString(), event, ...(detail !== undefined ? { detail } : {}) });
     };
 
-    const credentials = this.credentialRepo.findAllWithKeys().filter(c =>
-      this.adapterFor(c) !== null
+    // A credential can only serve models the admin selected on it.
+    const capable = this.credentialRepo.findAllWithKeys().filter(c =>
+      this.adapterFor(c) !== null &&
+      (c.allowed_models.length === 0 || c.allowed_models.includes(input.modelId)) &&
+      (input.plan?.credentialIds === undefined || input.plan.credentialIds.includes(c.id))
     );
 
-    if (credentials.length === 0) {
+    if (capable.length === 0) {
       push("no_credentials", {});
+      const reason = input.plan?.credentialIds
+        ? "No credential in the assigned group serves this model"
+        : "No provider credentials configured";
       return {
         status: 503,
         headers: { "content-type": "application/json" },
-        body: Buffer.from(JSON.stringify({ error: "No provider credentials configured" })),
+        body: Buffer.from(JSON.stringify({ error: reason })),
         credentialId: null,
         attempts: 0,
         outcome: "no_keys",
@@ -88,7 +104,7 @@ export class RoutingService {
     }
 
     const now = Date.now();
-    const candidates: KeyCandidate[] = credentials.map(cred => {
+    const candidates: KeyCandidate[] = capable.map(cred => {
       const existing = this.stateRepo.get(input.modelId, cred.id);
       return {
         credentialId: cred.id,
@@ -96,6 +112,9 @@ export class RoutingService {
         state: existing?.state ?? "ready",
         cooldownUntil: existing?.cooldown_until ?? null,
         useCount: existing?.use_count ?? 0,
+        lastUsedAt: existing?.last_used_at ?? null,
+        errorCount: existing?.error_count ?? 0,
+        avgLatencyMs: existing?.avg_latency_ms ?? null,
         createdAt: this.candidateSeq(cred)
       };
     });
@@ -110,19 +129,28 @@ export class RoutingService {
       }
     }
 
-    const ordered = orderCandidates(candidates, now);
-    const maxAttempts = Math.min(settings.keyFallbackAttempts, ordered.length);
+    const primary = input.plan?.primary ?? "least_used";
+    const fallback = input.plan?.fallback;
+    let pool: KeyCandidate[] = orderCandidates(candidates, now, primary).map(o => o.candidate);
+    const maxAttempts = Math.min(settings.keyFallbackAttempts, pool.length);
     const deadline = startedAt + settings.keyLoopDeadlineMs;
 
     let lastResult: UpstreamResult | null = null;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       if (Date.now() >= deadline || input.abortSignal.aborted) break;
+      if (pool.length === 0) break;
 
-      const entry = ordered[attempt - 1];
-      const credential = credentials.find(c => c.id === entry.candidate.credentialId)!;
+      // Pick the best remaining candidate; after a failure the rest of the
+      // pool is re-ranked by the group's fallback strategy (if configured).
+      if (attempt > 1 && fallback) {
+        pool = orderCandidates(pool, now, fallback).map(o => o.candidate);
+      }
+      const entry = pool.shift()!;
+      const credential = capable.find(c => c.id === entry.credentialId)!;
       const adapter = this.adapterFor(credential)!;
       const upstream = this.toUpstream(credential);
+      const attemptStartedAt = Date.now();
 
       push("attempt_start", { attempt, credentialId: credential.id, provider: credential.provider });
       this.stateRepo.incrementUse(input.modelId, credential.id);
@@ -153,6 +181,7 @@ export class RoutingService {
 
         if (result.status >= 200 && result.status < 300) {
           push("attempt_success", { attempt, status: result.status });
+          this.stateRepo.recordLatency(input.modelId, credential.id, Date.now() - attemptStartedAt);
           this.recordUsage(input, credential.id, result.status, Date.now() - startedAt, null);
           this.persistLog(input, traceId, timeline, result, credential.id, attempt, maxAttempts, startedAt);
           return { ...result, attempts: attempt, outcome: "success", credentialId: credential.id, classification: null };

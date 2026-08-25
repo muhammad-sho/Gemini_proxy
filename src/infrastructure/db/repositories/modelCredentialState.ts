@@ -12,7 +12,8 @@ export interface ModelCredentialState {
   use_count: number;
   error_count: number;
   last_error_at: number | null;
-  last_error_message: string | null;
+  last_error_message: string;
+  avg_latency_ms: number | null;
 }
 
 export class ModelCredentialStateRepository {
@@ -42,6 +43,11 @@ export class ModelCredentialStateRepository {
       last_error_at = excluded.last_error_at,
       last_error_message = excluded.last_error_message
   `);
+  private stmtUpdateLatency = this.db.prepare(`
+    UPDATE model_credential_state
+    SET avg_latency_ms = ?
+    WHERE model_id = ? AND credential_id = ?
+  `);
   private stmtClearCooldowns = this.db.prepare(`
     UPDATE model_credential_state
     SET state = 'ready', cooldown_until = NULL, cooldown_reason = NULL
@@ -62,6 +68,16 @@ export class ModelCredentialStateRepository {
 
   incrementError(modelId: string, credentialId: string, message: string): void {
     this.stmtIncrementError.run(modelId, credentialId, Date.now(), message);
+  }
+
+  /** Exponential moving average of successful attempt latencies (30% new sample). */
+  recordLatency(modelId: string, credentialId: string, latencyMs: number): void {
+    const existing = this.get(modelId, credentialId);
+    const prev = existing?.avg_latency_ms;
+    const next = prev === null || prev === undefined
+      ? latencyMs
+      : Math.round(prev * 0.7 + latencyMs * 0.3);
+    this.stmtUpdateLatency.run(next, modelId, credentialId);
   }
 
   clearAllCooldowns(): number {
