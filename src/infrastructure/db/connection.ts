@@ -1,19 +1,16 @@
 import Database from "better-sqlite3";
-import { getConfig } from "../../config/env.js";
 import { mkdirSync } from "fs";
 import { dirname } from "path";
-import { hashPassword } from "../../shared/crypto.js";
+import { dbPath } from "../../config/encryptionKey.js";
 
 let dbInstance: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (dbInstance) return dbInstance;
 
-  const config = getConfig();
-  const dbDir = dirname(config.dbPath);
-  mkdirSync(dbDir, { recursive: true });
+  mkdirSync(dirname(dbPath()), { recursive: true });
 
-  dbInstance = new Database(config.dbPath);
+  dbInstance = new Database(dbPath());
   dbInstance.pragma("journal_mode = WAL");
   dbInstance.pragma("foreign_keys = ON");
   dbInstance.pragma("busy_timeout = 5000");
@@ -191,17 +188,6 @@ export function runMigrations(db: Database.Database): void {
       db.exec(migrations[i]);
       db.prepare("INSERT INTO schema_version (version) VALUES (?)").run(version);
     }
-  }
-
-  // Ensure admin user exists
-  ensureAdminUser(db);
-}
-
-function ensureAdminUser(db: Database.Database): void {
-  const adminUser = db.prepare("SELECT * FROM admin_users WHERE username = 'admin'").get();
-  if (!adminUser) {
-    const passwordHash = hashPassword(getConfig().setupToken);
-    db.prepare("INSERT INTO admin_users (username, password_hash) VALUES (?, ?)").run("admin", passwordHash);
   }
 }
 

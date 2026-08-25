@@ -19,6 +19,7 @@ import { ModelGroupRepository } from "./../infrastructure/db/repositories/modelG
 import { AuditLogRepository } from "./../infrastructure/db/repositories/auditLogs.js";
 
 import { AdminSessionService } from "./../domain/auth/adminSessionService.js";
+import { SettingsService } from "./../domain/settings/settingsService.js";
 
 import { GeminiAdapter } from "./../infrastructure/providers/gemini.adapter.js";
 import { OpenAICompatibleAdapter } from "./../infrastructure/providers/openai-compatible.adapter.js";
@@ -31,11 +32,13 @@ import { gatewayRoutes } from "./routes/gateway.routes.js";
 import { openaiRoutes } from "./routes/openai.routes.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
+import { BODY_LIMIT_BYTES, FASTIFY_REQUEST_TIMEOUT_MS } from "../shared/constants.js";
 
 export interface AppDeps {
   config: EnvConfig;
   logger: Logger;
   db: Database;
+  settings: SettingsService;
   routingService: RoutingService;
   modelCacheService: ModelCacheService;
   adminSessionService: AdminSessionService;
@@ -64,9 +67,9 @@ type AppInstance = ReturnType<typeof newApp>;
 function newApp(config: EnvConfig, logger: Logger) {
   return Fastify({
     logger: logger as never,
-    bodyLimit: config.maxBodyBytes,
+    bodyLimit: BODY_LIMIT_BYTES,
     trustProxy: config.trustProxy,
-    requestTimeout: config.requestTimeoutMs,
+    requestTimeout: FASTIFY_REQUEST_TIMEOUT_MS,
     genReqId: () => randomUUID()
   });
 }
@@ -122,16 +125,20 @@ export async function buildServers(config: EnvConfig, logger: Logger, db: Databa
 
   const adminSessionService = new AdminSessionService();
 
+  // Runtime-tunable settings (dashboard Settings tab), persisted in app_metadata.
+  const settings = new SettingsService();
+  settings.init(db);
+
   const geminiAdapter = new GeminiAdapter();
   const openaiAdapter = new OpenAICompatibleAdapter();
 
   const routingService = new RoutingService(
-    providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, logger, geminiAdapter, openaiAdapter
+    providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, logger, geminiAdapter, openaiAdapter, settings
   );
-  const modelCacheService = new ModelCacheService(providerCredentialRepo, cacheRepo, logger, geminiAdapter, openaiAdapter);
+  const modelCacheService = new ModelCacheService(providerCredentialRepo, cacheRepo, logger, geminiAdapter, openaiAdapter, settings);
 
   const deps: AppDeps = {
-    config, logger, db,
+    config, logger, db, settings,
     routingService, modelCacheService, adminSessionService,
     clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, groupRepo, auditRepo
   };

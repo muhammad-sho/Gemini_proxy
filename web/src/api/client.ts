@@ -45,6 +45,15 @@ export interface TimelineEvent {
   detail?: unknown;
 }
 
+export interface ProxySettings {
+  keyFallbackAttempts: number;
+  keyLoopDeadlineMs: number;
+  requestTimeoutMs: number;
+  modelsCacheTtlHours: number;
+  logBodyMaxBytes: number;
+  maxLogEntries: number;
+}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message);
@@ -94,9 +103,14 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 }
 
 export const api = {
+  getSetupStatus: () => request<{ setupRequired: boolean }>("GET", "/api/admin/v1/setup/status"),
+  setup: (password: string) => request<{ ok: true }>("POST", "/api/admin/v1/setup", { password }),
   login: (token: string) => request<{ ok: true }>("POST", "/api/admin/v1/login", { token }),
   logout: () => request<{ ok: true }>("POST", "/api/admin/v1/logout"),
   getState: () => request<AdminState>("GET", "/api/admin/v1/state"),
+
+  getSettings: () => request<ProxySettings>("GET", "/api/admin/v1/settings"),
+  updateSettings: (patch: Partial<ProxySettings>) => request<ProxySettings>("PUT", "/api/admin/v1/settings", patch),
 
   createClientKey: (label: string, allowedModels: string[]) =>
     request<{ id: string; clientApiKey: string }>("POST", "/api/admin/v1/client-keys", { label, allowedModels }),

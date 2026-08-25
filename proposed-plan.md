@@ -128,7 +128,7 @@
   - usage_events
   - request_logs
   - audit_logs
-  - app_metadata
+  - app_metadata (holds the runtime-tunable Settings blob)
 
   Client-key and provider-credential restrictions are stored as JSON arrays (allowed_models, allowed_groups) on the owning rows rather than in separate mapping tables.
 
@@ -141,9 +141,9 @@
   - Request-log filtering and pagination
   - Audit-log time ordering
 
-  On first start the app seeds one admin user (username "admin") whose bcrypt-hashed password equals SETUP_TOKEN.
+  On first open of the dashboard (no admin account yet) a one-time setup screen creates the admin password (bcrypt-hashed, min 8 chars); no secrets are configured via environment variables.
 
-  Secrets must never be returned from repositories or API responses unless explicitly needed during one-time creation. Store provider keys encrypted by default when an encryption key is configured, and fail readiness in production mode if encryption is unavailable.
+  Secrets never come back from repositories except one-time creation responses. Provider keys are AES-256-GCM encrypted; the key is generated automatically inside the data directory on first use, so backing up that directory backs up everything. Readiness fails only if the key cannot be resolved (e.g. disk error).
 
   ### API contracts
 
@@ -178,6 +178,8 @@
 
   POST /api/admin/v1/login
   POST /api/admin/v1/logout
+  GET  /api/admin/v1/setup/status
+  POST /api/admin/v1/setup
   GET  /api/admin/v1/state
   POST /api/admin/v1/client-keys
   DELETE /api/admin/v1/client-keys/:id
@@ -192,6 +194,10 @@
   GET  /api/admin/v1/logs/:id
   POST /api/admin/v1/models/refresh
   POST /api/admin/v1/cooldowns/clear
+  GET  /api/admin/v1/settings
+  PUT  /api/admin/v1/settings
+
+  Setup endpoints are public and one-time: `GET /setup/status` tells the dashboard whether first-run provisioning is needed; `POST /setup` creates the admin account (min 8 chars) and refuses with 409 afterwards. Settings changes are audited.
 
   Login and logout share the versioned namespace with the rest of the admin API, on the dashboard port.
 
@@ -229,6 +235,7 @@
         model-groups/
         models/
         logs/
+        settings/
       styles/
     vite.config.ts
 

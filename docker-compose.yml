@@ -1,6 +1,7 @@
 # All configuration lives in .env (copy .env.example). This file only wires
-# the container: volume, port publishing, and the few settings that MUST
-# differ inside the container.
+# the container: volume, port publishing, and constants that MUST differ
+# inside the container. No secrets needed — the admin password is created on
+# first open of the dashboard.
 
 services:
   gemini-proxy:
@@ -8,8 +9,8 @@ services:
     container_name: gemini-proxy
     restart: unless-stopped
 
-    # Forward every variable in .env into the container. Optional, so an
-    # inline `SETUP_TOKEN=... docker compose up` also works without a file.
+    # Forward every variable in .env into the container. Optional, so a bare
+    # `docker compose up -d` also works.
     env_file:
       - path: .env
         required: false
@@ -17,24 +18,23 @@ services:
     environment:
       # Container constants — these intentionally override .env: Docker can
       # only publish ports to processes bound on 0.0.0.0, so all three
-      # surfaces bind every interface HERE; actual exposure is decided by the
-      # host-side address in the `ports` block below.
+      # surfaces bind every interface HERE; exposure is decided by the
+      # host-side address in the `ports` block below. DATA_DIR points the app
+      # at the mounted volume.
       NODE_ENV: production
-      DB_PATH: /data/gemini-proxy.db
+      DATA_DIR: /data
       GATEWAY_HOST: 0.0.0.0
       ADMIN_HOST: 0.0.0.0
-      # Fail fast at `up` when the admin password is missing.
-      SETUP_TOKEN: ${SETUP_TOKEN:?Set SETUP_TOKEN in .env (see .env.example)}
 
     volumes:
       - ./data:/data:Z
 
     ports:
       # Format: <host-ip>:<host-port>:<container-port>. Edit the left side to
-      # limit exposure; defaults below match the values in .env.
+      # limit exposure; defaults match the values in .env.
       - "${GEMINI_PORT:-18770}:${GEMINI_PORT:-18770}"          # Gemini API (public)
       - "${OPENAI_PORT:-18771}:${OPENAI_PORT:-18771}"          # OpenAI API (public)
       - "127.0.0.1:${ADMIN_PORT:-18765}:${ADMIN_PORT:-18765}"  # Dashboard/admin (local host only)
 
-# Backups: stop the container (or use sqlite3 ".backup ...") and copy ./data,
-# e.g. sqlite3 data/gemini-proxy.db ".backup 'data/backup-$(date +%F).db'"
+# Backup = back up ./data. It holds the SQLite database and everything else
+# the app needs (see README "Backup and migration").

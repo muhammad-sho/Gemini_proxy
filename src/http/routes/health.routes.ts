@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { getSchemaVersion } from "../../infrastructure/db/connection.js";
+import { getEncryptionKey } from "../../config/encryptionKey.js";
 import type { AppDeps } from "../server.js";
 
 export function healthRoutes(deps: AppDeps): FastifyPluginAsync {
@@ -21,9 +22,14 @@ export function healthRoutes(deps: AppDeps): FastifyPluginAsync {
       const version = getSchemaVersion(deps.db);
       checks.schema = version > 0;
 
-      if (deps.config.nodeEnv === "production") {
-        checks.encryption = Boolean(deps.config.encryptionKey);
-        if (!checks.encryption) ready = false;
+      // Encryption key lives in the data directory and is created on first
+      // use; readiness only fails if it cannot be resolved (e.g. disk error).
+      try {
+        getEncryptionKey();
+        checks.encryption = true;
+      } catch {
+        checks.encryption = false;
+        ready = false;
       }
 
       if (!ready) {

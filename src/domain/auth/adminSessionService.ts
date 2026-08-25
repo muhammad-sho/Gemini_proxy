@@ -15,10 +15,28 @@ export class AdminSessionService {
     if (!user || !this.authService.verifyPassword(user, token)) {
       return null;
     }
+    return this.createSessionFor(user.id);
+  }
 
+  /** True once an admin account exists (first-run setup completed). */
+  isProvisioned(): boolean {
+    return this.authService.hasAnyUser();
+  }
+
+  /**
+   * First-run provisioning: create the admin account when none exists.
+   * Returns the created user, or null when the app is already set up.
+   */
+  provision(password: string): { id: number } | null {
+    if (this.authService.hasAnyUser()) return null;
+    const user = this.authService.createUser("admin", password);
+    return { id: user.id };
+  }
+
+  createSessionFor(userId: number): { sessionId: string; csrfToken: string } {
     // Housekeeping: drop long-expired sessions so the table doesn't grow forever.
     this.sessionRepo.deleteExpired();
-    const session = this.sessionRepo.create(user.id);
+    const session = this.sessionRepo.create(userId);
     return {
       sessionId: session.id,
       csrfToken: session.csrf_token

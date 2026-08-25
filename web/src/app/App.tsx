@@ -6,8 +6,9 @@ import { ClientKeysPage } from "../features/client-keys/ClientKeysPage.js";
 import { ProviderCredentialsPage } from "../features/provider-credentials/ProviderCredentialsPage.js";
 import { ModelsPage } from "../features/models/ModelsPage.js";
 import { LogsPage } from "../features/logs/LogsPage.js";
+import { SettingsPage } from "../features/settings/SettingsPage.js";
 
-const TABS = ["Overview", "Client keys", "Providers", "Models", "Logs"] as const;
+const TABS = ["Overview", "Client keys", "Providers", "Models", "Logs", "Settings"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -60,6 +61,7 @@ export function App() {
             {tab === "Providers" && <ProviderCredentialsPage state={state} reload={reload} />}
             {tab === "Models" && <ModelsPage state={state} reload={reload} />}
             {tab === "Logs" && <LogsPage />}
+            {tab === "Settings" && <SettingsPage />}
           </>
         )}
       </main>
@@ -68,15 +70,34 @@ export function App() {
 }
 
 function LoginScreen({ onLogin }: { onLogin: (token: string) => Promise<void> }) {
-  const [token, setToken] = useState("");
+  const [mode, setMode] = useState<"checking" | "setup" | "login">("checking");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const { toast } = useApp();
 
+  useEffect(() => {
+    let cancelled = false;
+    api.getSetupStatus()
+      .then(r => { if (!cancelled) setMode(r.setupRequired ? "setup" : "login"); })
+      .catch(() => { if (!cancelled) setMode("login"); });
+    return () => { cancelled = true; };
+  }, []);
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (mode === "checking") return;
+    if (mode === "setup" && password !== confirm) {
+      toast("error", "Passwords do not match");
+      return;
+    }
     setBusy(true);
     try {
-      await onLogin(token);
+      if (mode === "setup") {
+        await api.setup(password);
+        toast("info", "Admin account created");
+      }
+      await onLogin(password);
     } catch (err) {
       toast("error", String((err as Error).message));
     } finally {
@@ -84,25 +105,62 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => Promise<void> })
     }
   };
 
+  const isSetup = mode === "setup";
+
   return (
     <div className="login-wrap">
       <form onSubmit={submit} className="login-card form">
         <h1>Gemini Proxy</h1>
-        <p className="hint">Enter the admin token (SETUP_TOKEN) to manage the proxy.</p>
-        <label>
-          Admin token
-          <input
-            type="password"
-            value={token}
-            onChange={e => setToken(e.target.value)}
-            required
-            autoFocus
-            autoComplete="current-password"
-          />
-        </label>
-        <button className="btn btn-primary" disabled={busy || !token}>
-          {busy ? "Signing in…" : "Sign in"}
-        </button>
+        {isSetup ? (
+          <>
+            <p className="hint">First run: create the admin password for this proxy.</p>
+            <label>
+              Admin password
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                minLength={8}
+                autoFocus
+                autoComplete="new-password"
+              />
+              <small className="hint">At least 8 characters.</small>
+            </label>
+            <label>
+              Confirm password
+              <input
+                type="password"
+                value={confirm}
+                onChange={e => setConfirm(e.target.value)}
+                required
+                minLength={8}
+                autoComplete="new-password"
+              />
+            </label>
+            <button className="btn btn-primary" disabled={busy || password.length < 8}>
+              {busy ? "Creating…" : "Create admin account"}
+            </button>
+          </>
+        ) : (
+          <>
+            <p className="hint">Enter your admin password to manage the proxy.</p>
+            <label>
+              Admin password
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+                autoFocus
+                autoComplete="current-password"
+              />
+            </label>
+            <button className="btn btn-primary" disabled={busy || !password}>
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );

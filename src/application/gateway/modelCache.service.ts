@@ -3,7 +3,7 @@ import type { ModelCacheRepository } from "../../infrastructure/db/repositories/
 import { GeminiAdapter } from "../../infrastructure/providers/gemini.adapter.js";
 import { OpenAICompatibleAdapter } from "../../infrastructure/providers/openai-compatible.adapter.js";
 import type { Logger } from "../../infrastructure/logging/logger.js";
-import { getConfig } from "../../config/env.js";
+import type { SettingsService } from "../../domain/settings/settingsService.js";
 
 export class ModelCacheService {
   constructor(
@@ -11,7 +11,8 @@ export class ModelCacheService {
     private cacheRepo: ModelCacheRepository,
     private logger: Logger,
     private gemini: GeminiAdapter,
-    private openai: OpenAICompatibleAdapter
+    private openai: OpenAICompatibleAdapter,
+    private settings: SettingsService
   ) {}
 
   /**
@@ -20,7 +21,7 @@ export class ModelCacheService {
    */
   maybeRefresh(): void {
     try {
-      const ttlHours = getConfig().modelsCacheTtlHours;
+      const ttlHours = this.settings.all().modelsCacheTtlHours;
       const stale = this.credentialRepo.findAll().some(c => !this.cacheRepo.isFresh(c.id, ttlHours));
       if (!stale) return;
       void this.refresh().catch(() => { /* per-credential errors already logged */ });

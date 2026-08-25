@@ -12,9 +12,29 @@ export class AuthService {
   private db = getDb();
   private stmtGetByUsername = this.db.prepare("SELECT * FROM admin_users WHERE username = ?");
   private stmtUpdatePassword = this.db.prepare("UPDATE admin_users SET password_hash = ? WHERE id = ?");
+  private stmtCount = this.db.prepare("SELECT COUNT(*) as count FROM admin_users");
+  private stmtInsert = this.db.prepare(
+    "INSERT INTO admin_users (username, password_hash) VALUES (?, ?)"
+  );
 
   findByUsername(username: string): AdminUser | undefined {
     return this.stmtGetByUsername.get(username) as AdminUser | undefined;
+  }
+
+  hasAnyUser(): boolean {
+    const row = this.stmtCount.get() as { count: number };
+    return row.count > 0;
+  }
+
+  createUser(username: string, password: string): AdminUser {
+    const hash = hashPassword(password);
+    const result = this.stmtInsert.run(username, hash);
+    return {
+      id: Number(result.lastInsertRowid),
+      username,
+      password_hash: hash,
+      created_at: Math.floor(Date.now() / 1000)
+    };
   }
 
   verifyPassword(user: AdminUser, password: string): boolean {

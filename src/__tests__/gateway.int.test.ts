@@ -4,11 +4,10 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-process.env.SETUP_TOKEN = "test-token-123";
-process.env.DB_PATH = join(mkdtempSync(join(tmpdir(), "gwtest-")), "test.db");
-process.env.APP_ENCRYPTION_KEY = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY";
-process.env.KEY_FALLBACK_ATTEMPTS = "2";
-process.env.KEY_LOOP_DEADLINE_MS = "10000";
+const dataDir = mkdtempSync(join(tmpdir(), "gwtest-"));
+process.env.DATA_DIR = dataDir;
+
+const ADMIN_PASSWORD = "test-admin-password";
 
 const hits: Record<string, number> = {};
 
@@ -92,16 +91,52 @@ describe("split gateway surfaces", () => {
     geminiApp = servers.gemini;
     openaiApp = servers.openai;
 
+    // First-run setup flow
+    const statusBefore = await adminApp.inject({ method: "GET", url: "/api/admin/v1/setup/status" });
+    expect(statusBefore.json()).toEqual({ setupRequired: true });
+
+    const tooShort = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/setup",
+      payload: { password: "short" }
+    });
+    expect(tooShort.statusCode).toBe(400);
+
+    const setup = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/setup",
+      payload: { password: ADMIN_PASSWORD }
+    });
+    expect(setup.statusCode).toBe(200);
+    const cookies = setup.cookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
+    adminCookie = cookies;
+    const sessionCookie = setup.cookies.find((c: any) => c.name === "gemini_csrf");
+    csrf = sessionCookie?.value ?? "";
+
+    const statusAfter = await adminApp.inject({ method: "GET", url: "/api/admin/v1/setup/status" });
+    expect(statusAfter.json()).toEqual({ setupRequired: false });
+
+    // Setup is one-time only
+    const secondSetup = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/setup",
+      payload: { password: ADMIN_PASSWORD }
+    });
+    expect(secondSetup.statusCode).toBe(409);
+
     const login = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/login",
-      payload: { token: "test-token-123" }
+      payload: { token: ADMIN_PASSWORD }
     });
     expect(login.statusCode).toBe(200);
-    const cookies = login.cookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
-    adminCookie = cookies;
-    const sessionCookie = login.cookies.find((c: any) => c.name === "gemini_csrf");
-    csrf = sessionCookie?.value ?? "";
+
+    const badLogin = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/login",
+      payload: { token: "wrong-password" }
+    });
+    expect(badLogin.statusCode).toBe(401);
 
     // Two credentials: bad key first (older), good key second.
     const credBad = await adminApp.inject({
@@ -135,9 +170,7 @@ describe("split gateway surfaces", () => {
     await geminiApp?.close();
     await openaiApp?.close();
     mock?.close();
-    try { rmSync(process.env.DB_PATH! + "-wal", { force: true }); } catch { /* noop */ }
-    try { rmSync(process.env.DB_PATH! + "-shm", { force: true }); } catch { /* noop */ }
-    try { rmSync(process.env.DB_PATH!, { force: true }); } catch { /* noop */ }
+    try { rmSync(dataDir, { recursive: true, force: true }); } catch { /* noop */ }
   });
 
   // ---- Gemini surface ----
@@ -246,6 +279,53 @@ describe("split gateway surfaces", () => {
       payload: { label: "csrf-less" }
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  // ---- Settings ----
+
+  it("serves runtime settings: defaults, live update and validation", async () => {
+    const unauth = await adminApp.inject({ method: "GET", url: "/api/admin/v1/settings" });
+    expect(unauth.statusCode).toBe(401);
+
+    const initial = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/settings",
+      headers: { cookie: adminCookie }
+    });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json()).toMatchObject({ keyFallbackAttempts: 2, maxLogEntries: 1000 });
+
+    const updated = await adminApp.inject({
+      method: "PUT",
+      url: "/api/admin/v1/settings",
+      headers: adminHeaders(),
+      payload: { keyFallbackAttempts: 3 }
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().keyFallbackAttempts).toBe(3);
+
+    const reread = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/settings",
+      headers: { cookie: adminCookie }
+    });
+    expect(reread.json().keyFallbackAttempts).toBe(3);
+
+    const invalid = await adminApp.inject({
+      method: "PUT",
+      url: "/api/admin/v1/settings",
+      headers: adminHeaders(),
+      payload: { keyFallbackAttempts: 99 }
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    // Restore default for later routing tests
+    await adminApp.inject({
+      method: "PUT",
+      url: "/api/admin/v1/settings",
+      headers: adminHeaders(),
+      payload: { keyFallbackAttempts: 2 }
+    });
   });
 
   // ---- OpenAI surface ----

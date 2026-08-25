@@ -7,7 +7,7 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 * Multiple Gemini API keys pooled behind one proxy endpoint
 * **Two protocol gateways on separate ports** — native Gemini (`/v1beta/*`) and OpenAI-compatible (`/v1/chat/completions`); each surface always expects its own wire format, no sniffing or guesswork
 * **Best-key selection** — ready keys first (least-used rotation per model); if none are ready, cooled keys are still tried as last resort, soonest-expiring cooldown first
-* Automatic retry on another key when one fails (`KEY_FALLBACK_ATTEMPTS`)
+* Automatic retry on another key when one fails (tunable in **Settings**)
 * Automatic cooldown when a key hits rate limits, transient errors, or daily quota
 * Upstream responses relayed verbatim (Gemini gateway) or translated faithfully into OpenAI shape (OpenAI gateway)
 * Per-key and per-model usage tracking in a web dashboard
@@ -64,30 +64,24 @@ latency, and truncated/masked payloads.
 
 # Quick Start (Docker Compose)
 
-You only need Docker installed.
+You only need Docker installed. **No configuration is required to boot** — the admin password is created in the browser on first open.
 
 ```bash
 mkdir gemini-proxy && cd gemini-proxy
 curl -fsSL -O https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
-curl -fsSL -o .env https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/.env.example
-# edit .env: set SETUP_TOKEN and APP_ENCRYPTION_KEY (openssl rand -base64 32);
-# every other value has a sane default
 docker compose up -d
 ```
 
-* `SETUP_TOKEN` — the admin password used to log into the dashboard (required).
-* `APP_ENCRYPTION_KEY` — encrypts the Google API keys you add later (required in production).
-
-All other settings — ports, routing behavior, cache, limits — live in `.env` too; the compose file only wires volumes and port publishing. Prefer no file at all? `SETUP_TOKEN=... APP_ENCRYPTION_KEY=... docker compose up -d` works as well.
-
-Check `docker compose logs -f`, then open the dashboard at `http://localhost:18765` (the compose file binds it to loopback on the host — reach it via SSH tunnel from elsewhere, e.g. `ssh -L 18765:127.0.0.1:18765 your-server`).
+Open the dashboard at `http://localhost:18765` (the compose file binds it to loopback on the host — reach it via SSH tunnel from elsewhere, e.g. `ssh -L 18765:127.0.0.1:18765 your-server`).
 
 First-time setup:
 
-1. Sign in with `SETUP_TOKEN`.
+1. Open the dashboard and create the admin password (first run only).
 2. Open **Providers** and add your Google Gemini API keys.
 3. Open **Client Keys** and generate a key for your application (shown once).
-4. Optionally hit **Refresh cache** under **Models**.
+4. Optionally hit **Refresh cache** under **Models**, and tune behavior under **Settings**.
+
+All app data lives in the `./data` folder next to `docker-compose.yml` — that single folder is your backup.
 
 ### Run from source (development)
 
@@ -104,7 +98,7 @@ Production-style local run:
 
 ```bash
 npm run build        # tsc -> dist/, vite -> dist-web/
-SETUP_TOKEN=secret APP_ENCRYPTION_KEY=$(openssl rand -base64 32) npm start
+NODE_ENV=production npm start
 ```
 
 Useful scripts: `npm run check` (typecheck server+web, lint, tests, dashboard build), `npm test` (Vitest), `npm run web:dev` (dashboard HMR against a running server).
@@ -122,6 +116,7 @@ Sign in at `http://localhost:18765` (or wherever `ADMIN_HOST:ADMIN_PORT` points;
 | **Providers** | Add/remove Google Gemini (or OpenAI-compatible) credentials; optional per-credential base URL and model allowlist |
 | **Models** | Cached model list from Google with manual refresh |
 | **Logs** | Every request with outcome/status/attempt filters and body search; click a row for the full timeline and payloads |
+| **Settings** | Routing behavior and log retention, applied live — no restart needed (see "Configuration") |
 
 ---
 
@@ -196,7 +191,7 @@ Ways to keep the dashboard private while managing a remote server:
 
 # Key Selection and Cooldowns
 
-For each model the proxy picks the credential with the fewest successful requests in the current window (least-used rotation). If that attempt fails, the next-best candidate is tried until `KEY_FALLBACK_ATTEMPTS` attempts or `KEY_LOOP_DEADLINE_MS` is exhausted; the last upstream response is relayed as-is.
+For each model the proxy picks the credential with the fewest successful requests in the current window (least-used rotation). If that attempt fails, the next-best candidate is tried until the configured attempt count or total deadline (dashboard **Settings**) is exhausted; the last upstream response is relayed as-is.
 
 | Failure | Classification | Cooldown |
 | --- | --- | --- |
@@ -209,43 +204,56 @@ Cooled-down keys drop out of rotation but remain last-resort candidates (soonest
 
 ---
 
-# Database and Backups
+# Configuration
 
-SQLite at `DB_PATH` (default `/data/gemini-proxy.db` in Docker). Migrations run automatically at startup and are versioned in the `schema_version` table.
+Configuration lives in three tiers, from most to least common:
 
-Back up by copying the database file while the proxy is stopped, or online:
+1. **Dashboard → Settings tab** (applied live, no restart): upstream attempts, total deadline, per-attempt timeout, model-cache TTL, log retention and stored body size. Persisted in the database.
+2. **`.env`** (deployment only — see `.env.example`): ports and bind addresses for the three surfaces, `LOG_LEVEL`, `TRUST_PROXY`.
+3. **Built-in defaults**: transport safety limits (10 MB request bodies, 50 MB stored responses) are fixed and intentionally not configurable.
+
+There are no secrets to configure. The admin password is created in the browser on first open; the encryption key for provider credentials is generated automatically inside the data directory.
+
+# Backup and migration
+
+All app data lives in one folder: `./data` next to the compose file (`/data` inside the container). It holds:
+
+* `gemini-proxy.db` (+ `-wal`/`-shm` while running) — admin password hash, client key hashes, settings, usage counters, cooldown state, request/audit logs
+* `encryption.key` — key that decrypts stored provider credentials
+* provider credentials themselves (AES-256-GCM encrypted)
+
+Migrations run automatically at startup and are versioned in the `schema_version` table.
+
+**Backup (app stopped):**
 
 ```bash
-sqlite3 data/gemini-proxy.db ".backup 'data/backup-$(date +%F).db'"
+docker compose stop          # or Ctrl+C the process
+tar czf gemini-proxy-backup-$(date +%F).tgz data/
 ```
 
-The database holds the admin password hash, client key hashes, usage counters, cooldown state, request logs, audit log, and **encrypted** provider credentials.
+**Backup (online):**
+
+```bash
+sqlite3 data/gemini-proxy.db ".backup 'data/backups/gemini-proxy-$(date +%F).db'"
+```
+
+**Restore / migrate to another machine:** stop the app, replace (or copy) the `data/` folder, start again. That's it — the folder is self-contained.
 
 ---
 
 # Environment Variables
 
-See `.env.example`. It is the single source of configuration: Docker Compose reads it automatically when placed next to `docker-compose.yml`, and running from source consumes the same variables. Highlights:
+Optional deployment knobs (see `.env.example`; Docker Compose reads it automatically):
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
 | `GATEWAY_HOST` | `0.0.0.0` | Bind address for both gateway surfaces |
 | `ADMIN_HOST` | `127.0.0.1` | Bind address for dashboard/admin (keep local) |
-| `DB_PATH` | `./data/gemini-proxy.db` | SQLite location |
-| `SETUP_TOKEN` | required | Admin login password (seeded as a bcrypt hash on first start) |
-| `APP_ENCRYPTION_KEY` | required in production | 32-byte base64 AES-256-GCM key for credentials at rest |
-| `KEY_FALLBACK_ATTEMPTS` | `2` | Upstream attempts per request before relaying the last response |
-| `KEY_LOOP_DEADLINE_MS` | `30000` | Total budget for all attempts |
-| `REQUEST_TIMEOUT_MS` | `60000` | Per-attempt upstream timeout |
-| `MODELS_CACHE_TTL_HOURS` | `24` | Model cache freshness |
-| `LOG_LEVEL` | `info` (`debug` in dev) | `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
-| `MAX_LOG_ENTRIES` | `1000` | Request-log retention (oldest pruned) |
-| `LOG_BODY_MAX_BYTES` | `65536` | Stored bytes per request/response body |
-| `MAX_BODY_BYTES` / `MAX_RESPONSE_BYTES` | 10 MB / 50 MB | Payload limits |
+| `LOG_LEVEL` | `info` (`debug` in dev) | Standard pino levels: `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
 
-All secrets are masked in logs. Readiness (`/health/ready` on the admin port) checks database, schema version, and encryption availability.
+All secrets are masked in logs. Readiness (`/health/ready` on the admin port) checks database, schema version, and encryption-key availability.
 
 ---
 
@@ -258,9 +266,10 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 # Security
 
 * **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; dashboard/admin is a separate port you can keep loopback-only (see "Ports and Exposure").
-* Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login is rate-limited and audited.
+* **No secrets in config files**: the admin password is created in the browser on first open (one-time setup endpoint; refuses once an account exists) and stored as a bcrypt hash.
+* Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login and setup are rate-limited and audited.
 * Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
-* Provider credentials encrypted at rest with AES-256-GCM (`APP_ENCRYPTION_KEY`).
+* Provider credentials encrypted at rest with AES-256-GCM; the key is generated automatically inside `data/` — back up that folder to back up everything.
 * Helmet headers on every surface, CSP for the dashboard; body-size limits everywhere; per-IP rate limiting on all three surfaces.
 * Do not expose port 18765 directly to the internet — keep it local or behind an authenticated proxy.
 
@@ -271,7 +280,8 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **401 Unauthorized** — missing/invalid client key; generate one under **Client Keys**.
 * **Model not permitted** — the client key's allowlist doesn't include this model.
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
-* **Readiness failing on encryption** — set `APP_ENCRYPTION_KEY`.
+* **Readiness failing on encryption** — the app cannot write its encryption key into `data/`; check disk space and folder permissions.
+* **Forgot the admin password?** Stop the app, run `sqlite3 data/gemini-proxy.db "DELETE FROM admin_users; DELETE FROM admin_sessions;"`, start again — the dashboard offers first-run setup once more (client keys and provider credentials are unaffected).
 * **Dashboard unreachable from another machine** — `ADMIN_HOST` defaults to `127.0.0.1` on purpose; use an SSH tunnel or a reverse proxy (see "Ports and Exposure").
 * **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 

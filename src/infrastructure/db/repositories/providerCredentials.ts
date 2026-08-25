@@ -1,7 +1,7 @@
 import { getDb } from "../connection.js";
 import { randomUUID } from "crypto";
 import { encrypt, decrypt } from "../../../shared/crypto.js";
-import { getConfig } from "../../../config/env.js";
+import { getEncryptionKey } from "../../../config/encryptionKey.js";
 
 export interface ProviderCredential {
   id: string;
@@ -40,22 +40,20 @@ export class ProviderCredentialRepository {
   `);
 
   constructor() {
-    const config = getConfig();
-    if (config.encryptionKey) {
-      this.encryptionKey = config.encryptionKey;
-    }
+    // Key is generated on first use inside the data directory; no config needed.
+    this.encryptionKey = getEncryptionKey();
   }
 
   private encryptKey(key: string): string {
     if (!this.encryptionKey) {
-      throw new Error("Encryption key not configured");
+      throw new Error("Encryption key unavailable — check write access to the data directory");
     }
     return encrypt(key, this.encryptionKey);
   }
 
   private decryptKey(encrypted: string): string {
     if (!this.encryptionKey) {
-      throw new Error("Encryption key not configured");
+      throw new Error("Encryption key unavailable — check write access to the data directory");
     }
     return decrypt(encrypted, this.encryptionKey);
   }
@@ -100,7 +98,7 @@ export class ProviderCredentialRepository {
     allowedGroups: string[] = []
   ): ProviderCredentialWithSecret {
     if (!this.encryptionKey) {
-      throw new Error("Encryption key not configured (APP_ENCRYPTION_KEY)");
+      throw new Error("Encryption key unavailable — check write access to the data directory");
     }
 
     const id = `pc_${randomUUID()}`;

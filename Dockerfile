@@ -26,7 +26,7 @@ RUN addgroup -S app && adduser -S app -G app \
     && mkdir -p /data && chown app:app /data
 
 ENV NODE_ENV=production \
-    DB_PATH=/data/gemini-proxy.db \
+    DATA_DIR=/data \
     GEMINI_PORT=18770 \
     OPENAI_PORT=18771 \
     ADMIN_PORT=18765

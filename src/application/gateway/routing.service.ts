@@ -10,7 +10,8 @@ import type { RequestLogRepository } from "../../infrastructure/db/repositories/
 import type { ModelCacheRepository } from "../../infrastructure/db/repositories/modelCache.js";
 import { randomUUID } from "crypto";
 import type { Logger } from "../../infrastructure/logging/logger.js";
-import { getConfig } from "../../config/env.js";
+import { RESPONSE_LIMIT_BYTES } from "../../shared/constants.js";
+import type { ProxySettings, SettingsService } from "../../domain/settings/settingsService.js";
 
 export interface UpstreamResult {
   status: number;
@@ -51,7 +52,8 @@ export class RoutingService {
     private cacheRepo: ModelCacheRepository,
     private logger: Logger,
     geminiAdapter: GeminiAdapter,
-    openaiAdapter: OpenAICompatibleAdapter
+    openaiAdapter: OpenAICompatibleAdapter,
+    private settings: SettingsService
   ) {
     this.adapters = new Map<string, ProviderAdapter>([
       ["gemini", geminiAdapter],
@@ -60,7 +62,7 @@ export class RoutingService {
   }
 
   async route(input: RouteRequestInput): Promise<UpstreamResult> {
-    const config = getConfig();
+    const settings: ProxySettings = this.settings.all();
     const traceId = randomUUID();
     const startedAt = Date.now();
     const timeline: TimelineEvent[] = [];
@@ -109,8 +111,8 @@ export class RoutingService {
     }
 
     const ordered = orderCandidates(candidates, now);
-    const maxAttempts = Math.min(config.keyFallbackAttempts, ordered.length);
-    const deadline = startedAt + config.keyLoopDeadlineMs;
+    const maxAttempts = Math.min(settings.keyFallbackAttempts, ordered.length);
+    const deadline = startedAt + settings.keyLoopDeadlineMs;
 
     let lastResult: UpstreamResult | null = null;
 
@@ -126,7 +128,7 @@ export class RoutingService {
       this.stateRepo.incrementUse(input.modelId, credential.id);
 
       const remainingMs = deadline - Date.now();
-      const timeoutMs = Math.min(remainingMs, config.requestTimeoutMs);
+      const timeoutMs = Math.min(remainingMs, settings.requestTimeoutMs);
       const controller = new AbortController();
       const onClientAbort = () => controller.abort();
       input.abortSignal.addEventListener("abort", onClientAbort, { once: true });
@@ -267,11 +269,10 @@ export class RoutingService {
       if (headerAllowlist.includes(k.toLowerCase())) responseHeaders[k] = v;
     }
 
-    const config = getConfig();
     const arrayBuffer = await response.arrayBuffer();
     let responseBody = Buffer.from(arrayBuffer);
-    if (responseBody.length > config.maxResponseBytes) {
-      responseBody = responseBody.subarray(0, config.maxResponseBytes);
+    if (responseBody.length > RESPONSE_LIMIT_BYTES) {
+      responseBody = responseBody.subarray(0, RESPONSE_LIMIT_BYTES);
     }
 
     // Translate successful non-Gemini responses back into Gemini shape so
@@ -336,11 +337,10 @@ export class RoutingService {
     startedAt: number,
     finalOutcome: UpstreamResult["outcome"] = "success"
   ): void {
-    const config = getConfig();
+    const settings = this.settings.all();
     try {
-      const maskKeys = [getConfig().setupToken];
-      const reqBody = input.body ? truncateAndMask(input.body.toString("utf8"), config.logBodyMaxBytes, maskKeys) : null;
-      const resBody = result.body.length > 0 ? truncateAndMask(result.body.toString("utf8"), config.logBodyMaxBytes, maskKeys) : null;
+      const reqBody = input.body ? truncate(input.body.toString("utf8"), settings.logBodyMaxBytes) : null;
+      const resBody = result.body.length > 0 ? truncate(result.body.toString("utf8"), settings.logBodyMaxBytes) : null;
 
       this.logRepo.insert({
         trace_id: traceId,
@@ -361,7 +361,7 @@ export class RoutingService {
         error_classification: result.status && result.status >= 400 ? String(result.status) : null,
         timeline: JSON.stringify(timeline)
       });
-      this.logRepo.prune(config.maxLogEntries);
+      this.logRepo.prune(settings.maxLogEntries);
     } catch (err) {
       this.logger.warn({ err }, "request log persistence failed");
     }
@@ -410,12 +410,6 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
   return sanitized;
 }
 
-function truncateAndMask(text: string, maxBytes: number, secrets: string[]): string {
-  let out = text;
-  for (const secret of secrets) {
-    if (secret && secret.length > 8) {
-      out = out.split(secret).join("[MASKED]");
-    }
-  }
-  return out.slice(0, maxBytes);
+function truncate(text: string, maxChars: number): string {
+  return text.slice(0, maxChars);
 }

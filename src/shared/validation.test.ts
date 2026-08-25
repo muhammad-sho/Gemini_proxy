@@ -2,28 +2,26 @@ import { describe, it, expect } from "vitest";
 import { validateEnv } from "./validation.js";
 
 const base = {
-  SETUP_TOKEN: "tok",
   ADMIN_PORT: "1234",
-  DB_PATH: "/tmp/x.db",
   KEY_FALLBACK_ATTEMPTS: "3"
 };
 
 describe("validateEnv", () => {
-  it("maps uppercase env to camelCase config", () => {
+  it("maps uppercase env to camelCase config with deployment defaults", () => {
     const c = validateEnv(base);
     expect(c.adminPort).toBe(1234);
     expect(c.geminiPort).toBe(18770);
     expect(c.openaiPort).toBe(18771);
     expect(c.gatewayHost).toBe("0.0.0.0");
     expect(c.adminHost).toBe("127.0.0.1");
-    expect(c.dbPath).toBe("/tmp/x.db");
-    expect(c.setupToken).toBe("tok");
-    expect(c.keyFallbackAttempts).toBe(3);
+    expect(c.trustProxy).toBe(false);
     expect(c.nodeEnv).toBe("development");
   });
 
-  it("rejects missing setup token", () => {
-    expect(() => validateEnv({})).toThrow(/SETUP_TOKEN/);
+  it("no longer accepts removed app-tuning variables (they live in dashboard Settings)", () => {
+    // Unknown keys are ignored by the schema; tuning moved to runtime settings.
+    const c = validateEnv(base);
+    expect((c as unknown as Record<string, unknown>).keyFallbackAttempts).toBeUndefined();
   });
 
   it("TRUST_PROXY string parsing: 'true' true, 'false'/unset false (not boolean-coerced)", () => {

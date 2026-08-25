@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { AppDeps } from "../server.js";
-import { requireAdmin } from "./auth.routes.js";
+import { requireAdmin, recordAudit } from "./auth.routes.js";
 import {
   clientKeyCreateSchema,
   providerCredentialCreateSchema,
   providerCredentialUpdateSchema
 } from "../../shared/validation.js";
+import { settingsUpdateSchema } from "./../../domain/settings/settingsService.js";
 
 function guard(deps: AppDeps, req: FastifyRequest): boolean {
   return requireAdmin(deps)(req) !== null;
@@ -173,6 +174,21 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
     app.post("/cooldowns/clear", async () => {
       const cleared = deps.stateRepo.clearAllCooldowns();
       return { cleared };
+    });
+
+    // ---- Runtime settings (dashboard Settings tab) ----
+    app.get("/settings", async () => deps.settings.all());
+
+    app.put("/settings", async (req, reply) => {
+      const parsed = settingsUpdateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.status(400).send({
+          error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id }
+        });
+      }
+      const updated = deps.settings.update(parsed.data);
+      recordAudit(deps, null, "update", "settings", Object.keys(parsed.data).join(","), req.ip);
+      return updated;
     });
   };
 }
