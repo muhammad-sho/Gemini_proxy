@@ -19,7 +19,7 @@ const ROUTING_FIELDS: NumberField[] = [
 
 const LOG_FIELDS: NumberField[] = [
   { key: "logBodyMaxBytes", label: "Stored body bytes", hint: "Max request/response bytes kept per log entry (1024–5242880)", min: 1024, max: 5242880 },
-  { key: "maxLogEntries", label: "Log retention (entries)", hint: "Oldest request logs are pruned beyond this count (50–100000)", min: 50, max: 100000 }
+  { key: "maxLogEntries", label: "Retention (entries)", hint: "Oldest request logs and usage events are pruned beyond this count (50–100000)", min: 50, max: 100000 }
 ];
 
 export function SettingsPage() {

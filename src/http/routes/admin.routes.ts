@@ -115,8 +115,14 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
 
     app.delete("/provider-credentials/:id", async (req, reply) => {
       const { id } = req.params as { id: string };
-      const ok = deps.providerCredentialRepo.delete(id);
-      if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      if (!deps.providerCredentialRepo.findById(id)) {
+        return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      }
+      // Integrity cascade: drop the credential's group targets atomically.
+      deps.db.transaction(() => {
+        deps.providerCredentialRepo.delete(id);
+        deps.groupRepo.removeCredentialTargets(id);
+      })();
       recordAudit(deps, null, "delete", "provider_credential", id, req.ip);
       return { ok: true };
     });
@@ -170,6 +176,8 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       if (!parsed.success) {
         return reply.status(400).send({ error: { code: 400, message: parsed.error.errors.map(e => e.message).join("; "), requestId: req.id } });
       }
+      const existing = deps.groupRepo.get(id);
+      if (!existing) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
       let updated;
       try {
         updated = deps.groupRepo.update(id, parsed.data);
@@ -180,15 +188,21 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         }
         return reply.status(500).send({ error: { code: 500, message, requestId: req.id } });
       }
-      if (!updated) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      // Integrity cascade: keep client-key references pointing at the new name.
+      if (parsed.data.name && parsed.data.name !== existing.name) {
+        deps.clientKeyRepo.renameGroupRef(existing.name, parsed.data.name);
+      }
       recordAudit(deps, null, "update", "group", id, req.ip);
       return updated;
     });
 
     app.delete("/groups/:id", async (req, reply) => {
       const { id } = req.params as { id: string };
-      const ok = deps.groupRepo.delete(id);
-      if (!ok) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      const existing = deps.groupRepo.get(id);
+      if (!existing) return reply.status(404).send({ error: { code: 404, message: "Not found", requestId: req.id } });
+      // Integrity cascade: remove dangling permissions before deleting.
+      deps.clientKeyRepo.removeGroupRef(existing.name);
+      deps.groupRepo.delete(id);
       recordAudit(deps, null, "delete", "group", id, req.ip);
       return { ok: true };
     });

@@ -25,6 +25,12 @@ export class UsageEventRepository {
     ORDER BY created_at DESC
     LIMIT ?
   `);
+  private stmtPrune = this.db.prepare(`
+    DELETE FROM usage_events
+    WHERE id NOT IN (
+      SELECT id FROM usage_events ORDER BY created_at DESC, id DESC LIMIT ?
+    )
+  `);
 
   record(event: Omit<UsageEvent, "id" | "created_at">): number {
     const result = this.stmtInsert.run(
@@ -42,5 +48,10 @@ export class UsageEventRepository {
 
   getRecent(limit: number): UsageEvent[] {
     return this.stmtGetRecent.all(limit) as UsageEvent[];
+  }
+
+  /** Retention cap shared with request logs (settings.maxLogEntries). */
+  prune(maxEntries: number): number {
+    return this.stmtPrune.run(maxEntries).changes;
   }
 }

@@ -95,4 +95,33 @@ export class ClientKeyRepository {
     );
     return result.changes > 0;
   }
+
+  /**
+   * Keep group references valid when a group is renamed: swap `from` for `to`
+   * in every client key's allowed_groups. Returns affected key count.
+   */
+  renameGroupRef(from: string, to: string): number {
+    return this.rewriteGroups(groups => groups.map(g => (g === from ? to : g)), from);
+  }
+
+  /** Strip a deleted group's name from every client key. */
+  removeGroupRef(name: string): number {
+    return this.rewriteGroups(groups => groups.filter(g => g !== name), name);
+  }
+
+  private rewriteGroups(
+    map: (groups: string[]) => string[],
+    matchName: string
+  ): number {
+    const rows = this.findAll().filter(k => k.allowed_groups.includes(matchName));
+    if (rows.length === 0) return 0;
+    const apply = this.db.transaction(() => {
+      for (const row of rows) {
+        const next = map(row.allowed_groups);
+        this.stmtUpdate.run(row.label, JSON.stringify(row.allowed_models), JSON.stringify(next), row.id);
+      }
+    });
+    apply();
+    return rows.length;
+  }
 }

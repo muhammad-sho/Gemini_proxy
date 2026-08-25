@@ -51,6 +51,9 @@ export class ModelGroupRepository {
     WHERE id = ?
   `);
   private stmtDelete = this.db.prepare("DELETE FROM model_groups WHERE id = ?");
+  private stmtDeleteByCredential = this.db.prepare(
+    "DELETE FROM model_group_pairs WHERE credential_id = ?"
+  );
   private stmtPairsFor = this.db.prepare("SELECT credential_id, model_id FROM model_group_pairs WHERE group_id = ?");
   private stmtReplacePairs = this.db.prepare("DELETE FROM model_group_pairs WHERE group_id = ?");
   private stmtInsertPair = this.db.prepare(
@@ -121,6 +124,11 @@ export class ModelGroupRepository {
   delete(id: string): boolean {
     const result = this.stmtDelete.run(id);
     return result.changes > 0;
+  }
+
+  /** Drop every target pointing at a deleted credential (integrity cascade). */
+  removeCredentialTargets(credentialId: string): number {
+    return this.stmtDeleteByCredential.run(credentialId).changes;
   }
 
   get(id: string): ModelGroup | undefined {

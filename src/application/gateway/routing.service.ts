@@ -95,7 +95,9 @@ export class RoutingService {
       return {
         status: 503,
         headers: { "content-type": "application/json" },
-        body: Buffer.from(JSON.stringify({ error: reason })),
+        body: Buffer.from(JSON.stringify({
+          error: { code: 503, message: reason, requestId: traceId }
+        })),
         credentialId: null,
         attempts: 0,
         outcome: "no_keys",
@@ -350,6 +352,8 @@ export class RoutingService {
         status_code: statusCode,
         error_message: errorClassification
       });
+      // Same retention cap as request logs keeps both tables bounded.
+      this.usageRepo.prune(this.settings.all().maxLogEntries);
     } catch (err) {
       this.logger.warn({ err }, "usage recording failed");
     }

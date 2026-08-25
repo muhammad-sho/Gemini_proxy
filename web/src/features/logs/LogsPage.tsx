@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type LogDetail, type LogRow } from "../../api/client.js";
+import { useApp } from "../../auth/useAuth.js";
 import { Modal } from "../../components/Modal.js";
 
 const PAGE_SIZE = 25;
@@ -20,25 +21,48 @@ export function LogsPage() {
   const [query, setQuery] = useState("");
   const [detail, setDetail] = useState<LogDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const { toast } = useApp();
+
+  // Debounce free-text search so typing fires one request, not one per key.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQuery(query), 300);
+    return () => window.clearTimeout(t);
+  }, [query]);
+  useEffect(() => { setOffset(0); }, [debouncedQuery]);
+
+  // Monotonic request id: ignore responses that arrive out of order.
+  const requestSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++requestSeq.current;
     setLoading(true);
     try {
-      const result = await api.listLogs({ outcome: outcome || undefined, q: query || undefined, limit: PAGE_SIZE, offset });
+      const result = await api.listLogs({
+        outcome: outcome || undefined,
+        q: debouncedQuery || undefined,
+        limit: PAGE_SIZE,
+        offset
+      });
+      if (seq !== requestSeq.current) return; // a newer request superseded this one
       setLogs(result.logs);
       setTotal(result.total);
+    } catch (e) {
+      if (seq === requestSeq.current) {
+        toast("error", `Could not load logs: ${String((e as Error).message).slice(0, 120)}`);
+      }
     } finally {
-      setLoading(false);
+      if (seq === requestSeq.current) setLoading(false);
     }
-  }, [outcome, query, offset]);
+  }, [outcome, debouncedQuery, offset, toast]);
 
   useEffect(() => { void load(); }, [load]);
 
   const openDetail = async (id: number) => {
     try {
       setDetail(await api.getLog(id));
-    } catch {
-      setDetail(null);
+    } catch (e) {
+      toast("error", `Could not open log: ${String((e as Error).message).slice(0, 120)}`);
     }
   };
 

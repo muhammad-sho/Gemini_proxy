@@ -433,6 +433,111 @@ describe("split gateway surfaces", () => {
     expect(key.allowedModels).toEqual(["gemini-2.0-flash"]);
   });
 
+  it("cleans up references on renames/deletes and returns a normalized 503 envelope", async () => {
+    const port = (mock.address() as { port: number }).port;
+
+    // Scratch credential whose deletion must cascade out of the group.
+    const scratch = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/provider-credentials",
+      headers: adminHeaders(),
+      payload: {
+        label: "scratch", provider: "gemini", apiKey: "SCRATCH_KEY",
+        baseUrl: `http://127.0.0.1:${port}`, allowedModels: ["mock-probe"]
+      }
+    });
+    const scratchId = scratch.json().id;
+
+    let group = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/groups",
+      headers: adminHeaders(),
+      payload: {
+        name: "integrity",
+        routingStrategy: "least_used",
+        pairs: [
+          { credentialId: goodCredentialId, modelId: "mock-probe" },
+          { credentialId: scratchId, modelId: "mock-probe" }
+        ]
+      }
+    });
+    expect(group.statusCode).toBe(201);
+    const groupId = group.json().id;
+
+    const ck = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/client-keys",
+      headers: adminHeaders(),
+      payload: { label: "ref-key", allowedGroups: ["integrity"] }
+    });
+    const refKeyId = ck.json().id;
+
+    // Deleting the scratch credential removes its ghost pairs from the group.
+    const del = await adminApp.inject({
+      method: "DELETE",
+      url: `/api/admin/v1/provider-credentials/${scratchId}`,
+      headers: adminHeaders()
+    });
+    expect(del.statusCode).toBe(200);
+    group = await adminApp.inject({ method: "GET", url: "/api/admin/v1/groups", headers: { cookie: adminCookie } });
+    const afterDelete = group.json().find((g: any) => g.id === groupId);
+    expect(afterDelete.pairs).toHaveLength(1);
+    expect(afterDelete.pairs[0].credentialId).toBe(goodCredentialId);
+
+    // Renaming the group rewrites client-key references.
+    const renamed = await adminApp.inject({
+      method: "PUT",
+      url: `/api/admin/v1/groups/${groupId}`,
+      headers: adminHeaders(),
+      payload: { name: "integrity-renamed" }
+    });
+    expect(renamed.statusCode).toBe(200);
+    let state = await adminApp.inject({ method: "GET", url: "/api/admin/v1/state", headers: { cookie: adminCookie } });
+    expect(state.json().clientKeys.find((k: any) => k.id === refKeyId).allowedGroups)
+      .toEqual(["integrity-renamed"]);
+
+    // A group pair pointing at a nonexistent credential yields the unified
+    // 503 envelope (code + message + requestId), not a bare string error.
+    await adminApp.inject({
+      method: "PUT",
+      url: `/api/admin/v1/groups/${groupId}`,
+      headers: adminHeaders(),
+      payload: { pairs: [{ credentialId: "pc_ghost-credential", modelId: "gemini-2.0-flash" }] }
+    });
+    const orphan = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:generateContent",
+      headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
+      payload: {}
+    });
+
+    // The main client key has no group for this model → normal routing applies;
+    // use the ref key (group-scoped) to hit the orphaned plan instead.
+    const groupedKey = ck.json().clientApiKey;
+    void orphan;
+    const res503 = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:generateContent",
+      headers: { "x-goog-api-key": groupedKey, "content-type": "application/json" },
+      payload: { contents: [{ parts: [{ text: "orphan" }] }] }
+    });
+    expect(res503.statusCode).toBe(503);
+    const errBody = res503.json();
+    expect(errBody.error.code).toBe(503);
+    expect(typeof errBody.error.message).toBe("string");
+    expect(errBody.error.requestId).toBeTruthy();
+
+    // Deleting the group strips its name from the client key.
+    const delGroup = await adminApp.inject({
+      method: "DELETE",
+      url: `/api/admin/v1/groups/${groupId}`,
+      headers: adminHeaders()
+    });
+    expect(delGroup.statusCode).toBe(200);
+    state = await adminApp.inject({ method: "GET", url: "/api/admin/v1/state", headers: { cookie: adminCookie } });
+    expect(state.json().clientKeys.find((k: any) => k.id === refKeyId).allowedGroups).toEqual([]);
+  });
+
   // ---- Admin surface ----
 
   it("rejects unauthenticated admin calls", async () => {
