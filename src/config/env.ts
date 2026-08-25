@@ -6,7 +6,11 @@ export function loadConfig(): EnvConfig {
   if (cachedConfig) return cachedConfig;
 
   const env = {
-    PORT: process.env.PORT,
+    GEMINI_PORT: process.env.GEMINI_PORT,
+    OPENAI_PORT: process.env.OPENAI_PORT,
+    ADMIN_PORT: process.env.ADMIN_PORT,
+    GATEWAY_HOST: process.env.GATEWAY_HOST,
+    ADMIN_HOST: process.env.ADMIN_HOST,
     DB_PATH: process.env.DB_PATH,
     SETUP_TOKEN: process.env.SETUP_TOKEN,
     APP_ENCRYPTION_KEY: process.env.APP_ENCRYPTION_KEY,

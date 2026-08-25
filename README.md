@@ -5,13 +5,15 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 ## Features
 
 * Multiple Gemini API keys pooled behind one proxy endpoint
+* **Two protocol gateways on separate ports** — native Gemini (`/v1beta/*`) and OpenAI-compatible (`/v1/chat/completions`); each surface always expects its own wire format, no sniffing or guesswork
 * **Best-key selection** — ready keys first (least-used rotation per model); if none are ready, cooled keys are still tried as last resort, soonest-expiring cooldown first
 * Automatic retry on another key when one fails (`KEY_FALLBACK_ATTEMPTS`)
 * Automatic cooldown when a key hits rate limits, transient errors, or daily quota
-* Google's responses — successes and errors alike — are relayed to the client byte-for-byte
+* Upstream responses relayed verbatim (Gemini gateway) or translated faithfully into OpenAI shape (OpenAI gateway)
 * Per-key and per-model usage tracking in a web dashboard
-* Model discovery from Google, served from a local cache so `/v1beta/models` answers instantly
+* Model discovery from Google, served from a local cache so `/v1beta/models` and `/v1/models` answer instantly
 * Web dashboard: overview stats, client keys, provider credentials, model cache, request logs with timeline and payload inspection
+* **Isolated surfaces**: dashboard/admin can run localhost-only while only the gateway ports are exposed publicly
 * SQLite storage — no external database needed
 * Provider credentials encrypted at rest (AES-256-GCM)
 * Docker and Docker Compose support, non-root container with healthcheck
@@ -21,30 +23,40 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 
 ## Architecture
 
-The server is a modular TypeScript/Fastify application. Request flow:
-route → auth → validation → use case → router/adapters → repositories.
+The server is a modular TypeScript/Fastify application. One process hosts **three independent HTTP servers**, each with its own port and purpose:
+
+| Surface | Default bind | Port | Speaks |
+| --- | --- | --- | --- |
+| **Gemini gateway** | `0.0.0.0` | `18770` | Gemini protocol only (`/v1beta/*`) |
+| **OpenAI gateway** | `0.0.0.0` | `18771` | OpenAI protocol only (`/v1/chat/completions`, `/v1/models`) |
+| **Dashboard + admin API** | `127.0.0.1` (local) | `18765` | Web UI under `/`, admin JSON under `/api/admin/v1/*`, health checks |
+
+Because each surface always knows which wire format it is receiving, there is no format detection: the Gemini gateway forwards Gemini bodies (translating per provider adapter), while the OpenAI gateway translates chat-completion requests into the canonical internal shape before routing.
+
+Request flow: route → auth → validation → use case → router/adapters → repositories.
 
 ```text
 src/
-├── main.ts                  bootstrap + graceful shutdown
+├── main.ts                  bootstrap, three listeners, graceful shutdown
 ├── config/env.ts            Zod-validated environment configuration
 ├── shared/                  types, crypto (AES-GCM, hashing), time helpers
 ├── infrastructure/
-│   ├── db/                  SQLite connection, numbered migrations, repositories
+│   ├── db/                  SQLite connection, versioned migrations, repositories
 │   ├── logging/             pino logger with secret masking
 │   └── providers/           gemini + openai-compatible upstream adapters
 ├── domain/
 │   ├── auth/                admin sessions
 │   ├── providers/           adapter interface + error classification
 │   └── routing/             cooldown policies + key selection ordering
-├── application/gateway/     routing service (retries/deadline/logging), model cache service
+├── application/gateway/     routing service (retries/deadline/logging), model cache,
+│                            OpenAI ⇄ canonical translation
 └── http/
-    ├── server.ts            Fastify composition root (helmet CSP, rate limit, static SPA)
-    └── routes/              health, gateway, auth, admin
+    ├── server.ts            composition root building the three servers
+    └── routes/              health, gemini gateway, openai gateway, auth, admin
 web/                         React 19 + Vite dashboard (built to dist-web/)
 ```
 
-Upstream responses are relayed verbatim; the proxy never rewrites bodies.
+Gemini-gateway responses are relayed verbatim; the proxy never rewrites bodies there.
 Every attempt is logged with a trace id, timeline events, classification,
 latency, and truncated/masked payloads.
 
@@ -63,7 +75,7 @@ SETUP_TOKEN=choose-a-long-secret APP_ENCRYPTION_KEY=$(openssl rand -base64 32) d
 * `SETUP_TOKEN` — the admin password used to log into the dashboard.
 * `APP_ENCRYPTION_KEY` — encrypts the Google API keys you add later (required in production).
 
-Check `docker compose logs -f`, then open `http://YOUR_SERVER_IP:18765`.
+Check `docker compose logs -f`, then open the dashboard at `http://localhost:18765` (the compose file binds it to loopback on the host — reach it via SSH tunnel from elsewhere, e.g. `ssh -L 18765:127.0.0.1:18765 your-server`).
 
 First-time setup:
 
@@ -96,7 +108,7 @@ Useful scripts: `npm run check` (typecheck server+web, lint, tests, dashboard bu
 
 # Dashboard
 
-Sign in at `http://YOUR_SERVER_IP:18765`. Tabs:
+Sign in at `http://localhost:18765` (or wherever `ADMIN_HOST:ADMIN_PORT` points; see "Ports and Exposure"). Tabs:
 
 | Tab | What it does |
 | --- | --- |
@@ -110,24 +122,70 @@ Sign in at `http://YOUR_SERVER_IP:18765`. Tabs:
 
 # API Usage
 
-Point any Gemini-compatible app at the proxy and swap two things: the URL and the key. Supported endpoints: `GET /v1beta/models` and `POST /v1beta/models/{model}:generateContent`. Streaming (`streamGenerateContent`) and `countTokens` are not proxied.
+Both gateways serve the same credential pool; pick whichever protocol your app already speaks and swap the URL and key. Streaming (`streamGenerateContent` / `"stream": true`) and `countTokens` are not proxied.
+
+## Gemini-protocol gateway (`:18770`)
+
+Endpoints: `GET /v1beta/models` and `POST /v1beta/models/{model}:generateContent`.
 
 The client key can be sent as `x-goog-api-key`, `Authorization: Bearer <key>`, or `?key=`:
 
 ```bash
-curl http://127.0.0.1:18765/v1beta/models/gemini-2.0-flash:generateContent \
+curl http://GATEWAY_HOST:18770/v1beta/models/gemini-2.0-flash:generateContent \
   -H "Content-Type: application/json" \
   -H "x-goog-api-key: YOUR-CLIENT-KEY" \
   -d '{"contents":[{"parts":[{"text":"Say hello"}]}]}'
 ```
 
-The response is Google's response, unchanged — including errors after all retries fail. Errors originating from the proxy use a normalized envelope:
+The response is Google's response, unchanged — including errors after all retries fail.
 
-```json
-{ "error": { "code": 503, "message": "No API keys configured", "requestId": "..." } }
+## OpenAI-protocol gateway (`:18771`)
+
+Endpoints: `GET /v1/models` and `POST /v1/chat/completions`, authenticated with `Authorization: Bearer <key>`:
+
+```bash
+curl http://GATEWAY_HOST:18771/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR-CLIENT-KEY" \
+  -d '{
+    "model": "gemini-2.0-flash",
+    "messages": [
+      { "role": "system", "content": "Be brief." },
+      { "role": "user", "content": "Say hello" }
+    ]
+  }'
 ```
 
-Admin API lives under `/api/admin/*` and requires the session cookie issued by `POST /api/admin/login`; mutations additionally require the `x-csrf-token` header.
+Requests arrive as OpenAI chat completions, are routed through the same key pool, and come back as standard OpenAI responses (`choices[].message.content`, `usage`, `finish_reason`). System messages map to Gemini system instructions; `temperature`, `top_p`, `max_tokens`/`max_completion_tokens`, and `stop` map to generation config. Errors use OpenAI's envelope:
+
+```json
+{ "error": { "message": "...", "type": "rate_limit_error", "code": 429 } }
+```
+
+## Proxy-origin errors
+
+Errors originating from either gateway (bad client key, no credentials configured, deadline exhausted) share one normalized envelope with an HTTP-aligned numeric code:
+
+```json
+{ "error": { "code": 503, "message": "No provider credentials configured", "requestId": "..." } }
+```
+
+Admin API lives under `/api/admin/v1/*` on the dashboard port and requires the session cookie issued by `POST /api/admin/v1/login`; mutations additionally require the `x-csrf-token` header.
+
+---
+
+# Ports and Exposure
+
+The three surfaces exist so you can expose exactly what the internet needs:
+
+* **Expose**: the gateway ports (`18770`, `18771`) — they only accept proxy client keys.
+* **Keep local** (recommended): the dashboard port (`18765`) — it holds admin power (credentials management, logs with payloads).
+
+Ways to keep the dashboard private while managing a remote server:
+
+1. **Bind to loopback** (default): `ADMIN_HOST=127.0.0.1`, then use an SSH tunnel: `ssh -L 18765:127.0.0.1:18765 user@server`.
+2. **Reverse proxy** with its own authentication in front of `/`, keeping the port firewalled.
+3. **Docker Compose**: publish with a host-side loopback prefix — `- "127.0.0.1:18765:18765"` — which is what the shipped compose file does. Inside the container all surfaces bind `0.0.0.0` so publishing works; restriction happens at the host port level.
 
 ---
 
@@ -166,7 +224,9 @@ See `.env.example`. Highlights:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `PORT` | `18765` | Listen port |
+| `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
+| `GATEWAY_HOST` | `0.0.0.0` | Bind address for both gateway surfaces |
+| `ADMIN_HOST` | `127.0.0.1` | Bind address for dashboard/admin (keep local) |
 | `DB_PATH` | `./data/gemini-proxy.db` | SQLite location |
 | `SETUP_TOKEN` | required | Admin login password (seeded as a bcrypt hash on first start) |
 | `APP_ENCRYPTION_KEY` | required in production | 32-byte base64 AES-256-GCM key for credentials at rest |
@@ -179,7 +239,7 @@ See `.env.example`. Highlights:
 | `MAX_BODY_BYTES` / `MAX_RESPONSE_BYTES` | 10 MB / 50 MB | Payload limits |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
 
-All secrets are masked in logs. Readiness (`/health/ready`) checks database, schema version, and encryption availability.
+All secrets are masked in logs. Readiness (`/health/ready` on the admin port) checks database, schema version, and encryption availability.
 
 ---
 
@@ -191,11 +251,12 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 
 # Security
 
-* Admin auth: session cookie (`httpOnly`, SameSite=Lax) + CSRF token cookie mirrored via `x-csrf-token`; login is rate-limited and audited.
+* **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; dashboard/admin is a separate port you can keep loopback-only (see "Ports and Exposure").
+* Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login is rate-limited and audited.
 * Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
 * Provider credentials encrypted at rest with AES-256-GCM (`APP_ENCRYPTION_KEY`).
-* Helmet CSP, strict response headers, body-size limits everywhere.
-* Do not expose port 18765 directly to the internet — put it behind an HTTPS reverse proxy or keep it on a trusted network.
+* Helmet headers on every surface, CSP for the dashboard; body-size limits everywhere; per-IP rate limiting on all three surfaces.
+* Do not expose port 18765 directly to the internet — keep it local or behind an authenticated proxy.
 
 ---
 
@@ -205,6 +266,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **Model not permitted** — the client key's allowlist doesn't include this model.
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
 * **Readiness failing on encryption** — set `APP_ENCRYPTION_KEY`.
+* **Dashboard unreachable from another machine** — `ADMIN_HOST` defaults to `127.0.0.1` on purpose; use an SSH tunnel or a reverse proxy (see "Ports and Exposure").
 * **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 
 ---

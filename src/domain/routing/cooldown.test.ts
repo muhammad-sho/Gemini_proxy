@@ -14,6 +14,14 @@ describe("cooldownFor", () => {
     expect(p.durationMs).toBe(60_000);
   });
 
+  it("direct daily_quota classification -> daily_quota until midnight", () => {
+    const p = cooldownFor("daily_quota");
+    expect(p.kind).toBe("daily_quota");
+    expect(p.reason).toBe("daily_quota");
+    expect(p.durationMs).toBeGreaterThan(0);
+    expect(p.durationMs).toBeLessThanOrEqual(24 * 3600_000);
+  });
+
   it("rate_limit without daily evidence -> transient", () => {
     const p = cooldownFor("rate_limit", { message: "Resource has been exhausted (e.g. check quota)." });
     expect(p.kind).toBe("transient");

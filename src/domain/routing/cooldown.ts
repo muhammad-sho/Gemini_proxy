@@ -17,6 +17,8 @@ export function cooldownFor(classification: ErrorClassification, detail?: {
   switch (classification) {
     case "invalid_key":
       return { kind: "invalid_key", durationMs: INVALID_KEY_COOLDOWN_MS, reason: "invalid_key" };
+    case "daily_quota":
+      return { kind: "daily_quota", durationMs: msUntilPacificMidnight(), reason: "daily_quota" };
     case "rate_limit":
       if (isDailyQuota(detail?.message, detail?.quotaDetails)) {
         return { kind: "daily_quota", durationMs: msUntilPacificMidnight(), reason: "daily_quota" };

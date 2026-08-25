@@ -4,7 +4,11 @@ import type { EnvConfig } from "./types.js";
 export type { EnvConfig };
 
 export const envSchema = z.object({
-  PORT: z.coerce.number().int().positive().default(18765),
+  GEMINI_PORT: z.coerce.number().int().positive().default(18770),
+  OPENAI_PORT: z.coerce.number().int().positive().default(18771),
+  ADMIN_PORT: z.coerce.number().int().positive().default(18765),
+  GATEWAY_HOST: z.string().default("0.0.0.0"),
+  ADMIN_HOST: z.string().default("127.0.0.1"),
   DB_PATH: z.string().default("./data/gemini-proxy.db"),
   SETUP_TOKEN: z.string().min(1, "SETUP_TOKEN is required"),
   APP_ENCRYPTION_KEY: z.string().optional(),
@@ -31,7 +35,11 @@ export function validateEnv(env: Record<string, string | undefined>): EnvConfig 
   }
   const d = result.data;
   return {
-    port: d.PORT,
+    geminiPort: d.GEMINI_PORT,
+    openaiPort: d.OPENAI_PORT,
+    adminPort: d.ADMIN_PORT,
+    gatewayHost: d.GATEWAY_HOST,
+    adminHost: d.ADMIN_HOST,
     dbPath: d.DB_PATH,
     setupToken: d.SETUP_TOKEN,
     encryptionKey: d.APP_ENCRYPTION_KEY,
@@ -74,3 +82,27 @@ export const providerCredentialUpdateSchema = z.object({
 });
 
 export type ProviderCredentialUpdate = z.infer<typeof providerCredentialUpdateSchema>;
+
+const chatMessageSchema = z.object({
+  role: z.enum(["system", "developer", "user", "assistant", "tool"]),
+  content: z.union([z.string(), z.null()]).optional(),
+  name: z.string().optional()
+});
+
+export const chatCompletionCreateSchema = z.object({
+  model: z.string().min(1),
+  messages: z.array(chatMessageSchema).min(1),
+  temperature: z.number().min(0).max(2).optional(),
+  top_p: z.number().min(0).max(1).optional(),
+  max_tokens: z.number().int().positive().optional(),
+  max_completion_tokens: z.number().int().positive().optional(),
+  stop: z.union([z.string(), z.array(z.string())]).optional(),
+  stream: z.boolean().optional()
+});
+
+export type ChatCompletionCreate = z.infer<typeof chatCompletionCreateSchema>;
+export interface ChatMessage {
+  role: "system" | "developer" | "user" | "assistant" | "tool";
+  content?: string | null;
+  name?: string;
+}

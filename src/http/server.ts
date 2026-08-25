@@ -28,6 +28,7 @@ import { ModelCacheService } from "./../application/gateway/modelCache.service.j
 
 import { healthRoutes } from "./routes/health.routes.js";
 import { gatewayRoutes } from "./routes/gateway.routes.js";
+import { openaiRoutes } from "./routes/openai.routes.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { adminRoutes } from "./routes/admin.routes.js";
 
@@ -48,35 +49,68 @@ export interface AppDeps {
   auditRepo: AuditLogRepository;
 }
 
-export async function buildServer(config: EnvConfig, logger: Logger, db: Database) {
-  const app = Fastify({
+export interface AppServers {
+  /** Dashboard + admin API. Bind local-only by default (ADMIN_HOST). */
+  admin: AppInstance;
+  /** Gemini-protocol gateway (/v1beta/*). */
+  gemini: AppInstance;
+  /** OpenAI-protocol gateway (/v1/models, /v1/chat/completions). */
+  openai: AppInstance;
+}
+
+/** Instance shape produced by newApp (kept inferred to satisfy Fastify's plugin generics). */
+type AppInstance = ReturnType<typeof newApp>;
+
+function newApp(config: EnvConfig, logger: Logger) {
+  return Fastify({
     logger: logger as never,
     bodyLimit: config.maxBodyBytes,
     trustProxy: config.trustProxy,
     requestTimeout: config.requestTimeoutMs,
     genReqId: () => randomUUID()
   });
+}
 
-  await app.register(cookie);
-  await app.register(helmet, {
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        styleSrc: ["'self'", "'unsafe-inline'"],
-        scriptSrc: ["'self'"],
-        imgSrc: ["'self'", "data:"],
-        // Served over plain HTTP on LAN; upgrading to https:// breaks asset loading.
-        upgradeInsecureRequests: null
-      }
+/** Normalized error envelope with a numeric HTTP-aligned code on every surface. */
+function installErrorHandler(app: AppInstance, config: EnvConfig): void {
+  app.setErrorHandler((error, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    if (statusCode >= 500) {
+      request.log.error({ err: error }, "unhandled error");
     }
+    reply.status(statusCode).send({
+      error: {
+        code: statusCode,
+        message: statusCode >= 500 && config.nodeEnv === "production" ? "Internal server error" : error.message,
+        requestId: request.id
+      }
+    });
   });
+}
+
+async function registerRateLimit(app: AppInstance): Promise<void> {
   await app.register(rateLimit, {
     max: 300,
     timeWindow: "1 minute",
     keyGenerator: req => `${req.ip}`
   });
+}
 
-  // ---- Composition root (dependency injection) ----
+function jsonNotFound(app: AppInstance): void {
+  app.setNotFoundHandler((request, reply) => {
+    reply.status(404).send({
+      error: { code: 404, message: "Not found", requestId: request.id }
+    });
+  });
+}
+
+/**
+ * Composition root: constructs the shared services once and exposes three
+ * independent HTTP servers so each surface can be exposed or firewalled on
+ * its own.
+ */
+export async function buildServers(config: EnvConfig, logger: Logger, db: Database): Promise<AppServers> {
+  // ---- Shared composition (dependency injection) ----
   const clientKeyRepo = new ClientKeyRepository();
   const providerCredentialRepo = new ProviderCredentialRepository();
   const stateRepo = new ModelCredentialStateRepository();
@@ -102,21 +136,35 @@ export async function buildServer(config: EnvConfig, logger: Logger, db: Databas
     clientKeyRepo, providerCredentialRepo, stateRepo, usageRepo, logRepo, cacheRepo, groupRepo, auditRepo
   };
 
-  // ---- Routes ----
-  await app.register(healthRoutes(deps));
-  await app.register(gatewayRoutes(deps));
-  await app.register(authRoutes(deps), { prefix: "/api/admin" });
-  await app.register(adminRoutes(deps), { prefix: "/api/admin/v1" });
+  // ---- Admin/dashboard server ----
+  const admin = newApp(config, logger);
+  await admin.register(cookie);
+  await admin.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        scriptSrc: ["'self'"],
+        imgSrc: ["'self'", "data:"],
+        // Served over plain HTTP on LAN; upgrading to https:// breaks asset loading.
+        upgradeInsecureRequests: null
+      }
+    }
+  });
+  await registerRateLimit(admin);
 
-  // ---- Static dashboard (built web/dist-web), SPA fallback ----
+  await admin.register(healthRoutes(deps));
+  await admin.register(authRoutes(deps), { prefix: "/api/admin/v1" });
+  await admin.register(adminRoutes(deps), { prefix: "/api/admin/v1" });
+
+  // Static dashboard (built web/dist-web), SPA fallback
   const webRoot = new URL("../../dist-web/", import.meta.url).pathname;
   if (existsSync(webRoot)) {
-    await app.register(fastifyStatic, { root: webRoot });
-    app.setNotFoundHandler((request, reply) => {
-      // API routes keep their JSON 404; everything else falls back to the SPA.
+    await admin.register(fastifyStatic, { root: webRoot });
+    admin.setNotFoundHandler((request, reply) => {
+      // Admin API and health keep their JSON 404; everything else falls back to the SPA.
       if (
         request.raw.url?.startsWith("/api") ||
-        request.raw.url?.startsWith("/v1beta") ||
         request.raw.url?.startsWith("/health")
       ) {
         return reply.status(404).send({
@@ -126,22 +174,23 @@ export async function buildServer(config: EnvConfig, logger: Logger, db: Databas
       return reply.sendFile("index.html");
     });
   }
+  installErrorHandler(admin, config);
 
-  // Central error handler -> normalized envelope
-  app.setErrorHandler((error, request, reply) => {
-    const statusCode = error.statusCode ?? 500;
-    const requestId = request.id;
-    if (statusCode >= 500) {
-      request.log.error({ err: error }, "unhandled error");
-    }
-    reply.status(statusCode).send({
-      error: {
-        code: statusCode === 429 ? "rate_limited" : statusCode >= 500 ? "internal_error" : "bad_request",
-        message: statusCode >= 500 && config.nodeEnv === "production" ? "Internal server error" : error.message,
-        requestId
-      }
-    });
-  });
+  // ---- Gemini-protocol gateway ----
+  const gemini = newApp(config, logger);
+  await gemini.register(helmet, { contentSecurityPolicy: false });
+  await registerRateLimit(gemini);
+  await gemini.register(gatewayRoutes(deps));
+  jsonNotFound(gemini);
+  installErrorHandler(gemini, config);
 
-  return app;
+  // ---- OpenAI-protocol gateway ----
+  const openai = newApp(config, logger);
+  await openai.register(helmet, { contentSecurityPolicy: false });
+  await registerRateLimit(openai);
+  await openai.register(openaiRoutes(deps));
+  jsonNotFound(openai);
+  installErrorHandler(openai, config);
+
+  return { admin, gemini, openai };
 }

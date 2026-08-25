@@ -11,8 +11,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // Dashboard talks only to the admin surface (default port 18765).
       "/api": "http://localhost:18765",
-      "/v1beta": "http://localhost:18765",
       "/health": "http://localhost:18765"
     }
   }

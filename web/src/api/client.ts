@@ -94,8 +94,8 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
 }
 
 export const api = {
-  login: (token: string) => request<{ ok: true }>("POST", "/api/admin/login", { token }),
-  logout: () => request<{ ok: true }>("POST", "/api/admin/logout"),
+  login: (token: string) => request<{ ok: true }>("POST", "/api/admin/v1/login", { token }),
+  logout: () => request<{ ok: true }>("POST", "/api/admin/v1/logout"),
   getState: () => request<AdminState>("GET", "/api/admin/v1/state"),
 
   createClientKey: (label: string, allowedModels: string[]) =>

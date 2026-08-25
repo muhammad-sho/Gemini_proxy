@@ -27,7 +27,9 @@ RUN addgroup -S app && adduser -S app -G app \
 
 ENV NODE_ENV=production \
     DB_PATH=/data/gemini-proxy.db \
-    PORT=18765
+    GEMINI_PORT=18770 \
+    OPENAI_PORT=18771 \
+    ADMIN_PORT=18765
 
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
 COPY --from=build --chown=app:app /app/dist ./dist
@@ -35,10 +37,12 @@ COPY --from=build --chown=app:app /app/dist-web ./dist-web
 COPY --from=build --chown=app:app /app/package.json ./package.json
 COPY --chmod=755 entrypoint.sh ./entrypoint.sh
 
-EXPOSE 18765
+# 18770 Gemini gateway · 18771 OpenAI gateway · 18765 dashboard/admin API.
+# Restrict exposure at publish/bind time — see README "Ports and exposure".
+EXPOSE 18770 18771 18765
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${PORT}/health/live" >/dev/null 2>&1 || exit 1
+  CMD wget -qO- "http://127.0.0.1:${ADMIN_PORT}/health/live" >/dev/null 2>&1 || exit 1
 
 # Starts as root only to fix /data ownership (bind mounts), then immediately
 # execs the server as the unprivileged `app` user — see entrypoint.sh.

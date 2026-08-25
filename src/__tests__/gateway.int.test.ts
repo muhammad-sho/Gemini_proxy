@@ -61,37 +61,40 @@ async function startMock(): Promise<number> {
   return (mock.address() as { port: number }).port;
 }
 
-describe("gateway routing integration", () => {
-  let app: any;
+describe("split gateway surfaces", () => {
+  let adminApp: any;
+  let geminiApp: any;
+  let openaiApp: any;
   let adminCookie: string;
-  let clientKey: string;
   let csrf: string;
+  let clientKey: string;
 
   /** Admin request headers incl. CSRF echo, mirroring the dashboard client. */
   const adminHeaders = (): Record<string, string> => ({
     cookie: adminCookie,
     "x-csrf-token": csrf
   });
-  const cleanupDirs: string[] = [];
 
   beforeAll(async () => {
     const port = await startMock();
     const { loadConfig } = await import("../config/env.js");
     const { createLogger } = await import("../infrastructure/logging/logger.js");
-    const { buildServer } = await import("../http/server.js");
+    const { buildServers } = await import("../http/server.js");
 
     const config = loadConfig();
-    cleanupDirs.push(config.dbPath);
     const logger = createLogger("test");
     const { getDb, runMigrations } = await import("../infrastructure/db/connection.js");
     const db = getDb();
     runMigrations(db);
 
-    app = await buildServer(config, logger, db);
+    const servers = await buildServers(config, logger, db);
+    adminApp = servers.admin;
+    geminiApp = servers.gemini;
+    openaiApp = servers.openai;
 
-    const login = await app.inject({
+    const login = await adminApp.inject({
       method: "POST",
-      url: "/api/admin/login",
+      url: "/api/admin/v1/login",
       payload: { token: "test-token-123" }
     });
     expect(login.statusCode).toBe(200);
@@ -101,7 +104,7 @@ describe("gateway routing integration", () => {
     csrf = sessionCookie?.value ?? "";
 
     // Two credentials: bad key first (older), good key second.
-    const credBad = await app.inject({
+    const credBad = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
@@ -109,7 +112,7 @@ describe("gateway routing integration", () => {
     });
     expect(credBad.statusCode).toBe(201);
 
-    const credGood = await app.inject({
+    const credGood = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
@@ -117,7 +120,7 @@ describe("gateway routing integration", () => {
     });
     expect(credGood.statusCode).toBe(201);
 
-    const ck = await app.inject({
+    const ck = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/client-keys",
       headers: adminHeaders(),
@@ -128,16 +131,19 @@ describe("gateway routing integration", () => {
   });
 
   afterAll(async () => {
-    await app?.close();
+    await adminApp?.close();
+    await geminiApp?.close();
+    await openaiApp?.close();
     mock?.close();
-    void cleanupDirs;
     try { rmSync(process.env.DB_PATH! + "-wal", { force: true }); } catch { /* noop */ }
     try { rmSync(process.env.DB_PATH! + "-shm", { force: true }); } catch { /* noop */ }
     try { rmSync(process.env.DB_PATH!, { force: true }); } catch { /* noop */ }
   });
 
+  // ---- Gemini surface ----
+
   it("falls back from invalid key to good key and relays Google's success verbatim", async () => {
-    const res = await app.inject({
+    const res = await geminiApp.inject({
       method: "POST",
       url: "/v1beta/models/gemini-2.0-flash:generateContent",
       headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
@@ -151,6 +157,17 @@ describe("gateway routing integration", () => {
     expect(hits["GOOD_KEY"]).toBe(1);
   });
 
+  it("rejects non-generateContent actions", async () => {
+    const res = await geminiApp.inject({
+      method: "POST",
+      url: "/v1beta/models/gemini-2.0-flash:countTokens",
+      headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
+      payload: {}
+    });
+    expect(res.statusCode).toBe(404);
+    expect(res.json().error.message).toMatch(/generateContent/);
+  });
+
   it("puts the invalid key into cooldown", async () => {
     const { getDb } = await import("../infrastructure/db/connection.js");
     const rows = getDb()
@@ -162,7 +179,7 @@ describe("gateway routing integration", () => {
 
   it("second request skips the cooled key entirely", async () => {
     hits.BAD_KEY = 0;
-    const res = await app.inject({
+    const res = await geminiApp.inject({
       method: "POST",
       url: "/v1beta/models/gemini-2.0-flash:generateContent",
       headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
@@ -173,7 +190,7 @@ describe("gateway routing integration", () => {
     expect(hits["GOOD_KEY"]).toBe(2);
   });
 
-  it("records usage events and request logs with masked secrets", async () => {
+  it("records usage events and request logs", async () => {
     const { getDb } = await import("../infrastructure/db/connection.js");
     const db = getDb();
     const usage = db.prepare("SELECT COUNT(*) n FROM usage_events").get() as { n: number };
@@ -184,12 +201,11 @@ describe("gateway routing integration", () => {
     expect(logs[0].final_outcome).toBe("success");
   });
 
-  it("daily-quota failure cools until midnight and is classified daily_quota", async () => {
-    // Add quota-limited credential, clear existing cooldowns first so ordering is clean
-    await app.inject({ method: "POST", url: "/api/admin/v1/cooldowns/clear", headers: { cookie: adminCookie } });
-
+  it("daily-quota failure is classified daily_quota and cools the key", async () => {
+    // Clear existing cooldowns so ordering starts clean
+    await adminApp.inject({ method: "POST", url: "/api/admin/v1/cooldowns/clear", headers: adminHeaders() });
     const port = (mock.address() as { port: number }).port;
-    const credQuota = await app.inject({
+    const credQuota = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/provider-credentials",
       headers: adminHeaders(),
@@ -197,38 +213,134 @@ describe("gateway routing integration", () => {
     });
     expect(credQuota.statusCode).toBe(201);
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/v1beta/models/gemini-2.0-flash:generateContent",
-      headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
-      payload: { contents: [{ parts: [{ text: "q" }] }] }
-    });
-    // QUOTA_KEY is newest -> least-used tie-break may pick it or GOOD_KEY first;
-    // whichever fails must be classified correctly. Force determinism instead:
-    void res;
+    // Drive requests until the QUOTA_KEY gets its attempt (least-used rotation
+    // starts with the least-used credentials; QUOTA_KEY cools down when tried).
+    for (let i = 0; i < 2; i++) {
+      await geminiApp.inject({
+        method: "POST",
+        url: "/v1beta/models/gemini-2.0-flash:generateContent",
+        headers: { "x-goog-api-key": clientKey, "content-type": "application/json" },
+        payload: { contents: [{ parts: [{ text: "q" }] }] }
+      });
+    }
 
     const { getDb } = await import("../infrastructure/db/connection.js");
-    const db = getDb();
-    const reasons = db
+    const reasons = getDb()
       .prepare("SELECT DISTINCT cooldown_reason FROM model_credential_state WHERE state='cooling'")
       .all() as any[];
-    const hasDaily = reasons.some(r => r.cooldown_reason === "daily_quota");
-    const hasInvalidOrNone = reasons.length === 0 || reasons.some(r => r.cooldown_reason !== "rate_limit");
-    expect(hasDaily || hasInvalidOrNone).toBeTruthy();
+    expect(reasons.some(r => r.cooldown_reason === "daily_quota")).toBe(true);
   });
 
+  // ---- Admin surface ----
+
   it("rejects unauthenticated admin calls", async () => {
-    const res = await app.inject({ method: "GET", url: "/api/admin/v1/state" });
+    const res = await adminApp.inject({ method: "GET", url: "/api/admin/v1/state" });
     expect(res.statusCode).toBe(401);
   });
 
   it("rejects admin mutations without the CSRF header", async () => {
-    const res = await app.inject({
+    const res = await adminApp.inject({
       method: "POST",
       url: "/api/admin/v1/client-keys",
       headers: { cookie: adminCookie }, // session cookie but no x-csrf-token
       payload: { label: "csrf-less" }
     });
     expect(res.statusCode).toBe(401);
+  });
+
+  // ---- OpenAI surface ----
+
+  it("serves chat completions translated into OpenAI format", async () => {
+    const res = await openaiApp.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: `Bearer ${clientKey}`, "content-type": "application/json" },
+      payload: {
+        model: "gemini-2.0-flash",
+        messages: [
+          { role: "system", content: "be nice" },
+          { role: "user", content: "hi again" }
+        ],
+        temperature: 0.7,
+        max_tokens: 50
+      }
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.object).toBe("chat.completion");
+    expect(body.model).toBe("gemini-2.0-flash");
+    expect(body.choices[0].message.role).toBe("assistant");
+    expect(body.choices[0].message.content).toContain("hello-from-GOOD_KEY");
+    expect(body.choices[0].finish_reason).toBe("stop");
+    expect(body.usage.total_tokens).toBeGreaterThan(0);
+  });
+
+  it("lists cached models in OpenAI format", async () => {
+    const res = await openaiApp.inject({
+      method: "GET",
+      url: "/v1/models",
+      headers: { authorization: `Bearer ${clientKey}` }
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.object).toBe("list");
+    expect(body.data.some((m: any) => m.id === "mock-probe")).toBe(true);
+  });
+
+  it("rejects missing/unknown bearer tokens with an OpenAI-shaped 401", async () => {
+    const missing = await openaiApp.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { "content-type": "application/json" },
+      payload: { model: "m", messages: [{ role: "user", content: "x" }] }
+    });
+    expect(missing.statusCode).toBe(401);
+    expect(missing.json().error.type).toBe("authentication_error");
+
+    const bad = await openaiApp.inject({
+      method: "GET",
+      url: "/v1/models",
+      headers: { authorization: "Bearer gck_not-a-real-key" }
+    });
+    expect(bad.statusCode).toBe(401);
+    expect(bad.json().error.type).toBe("authentication_error");
+  });
+
+  it("rejects streaming requests until streaming ships", async () => {
+    const res = await openaiApp.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: `Bearer ${clientKey}`, "content-type": "application/json" },
+      payload: { model: "gemini-2.0-flash", messages: [{ role: "user", content: "x" }], stream: true }
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.type).toBe("invalid_request_error");
+  });
+
+  it("enforces client-key model allowlists on the OpenAI surface", async () => {
+    const ck = await adminApp.inject({
+      method: "POST",
+      url: "/api/admin/v1/client-keys",
+      headers: adminHeaders(),
+      payload: { label: "restricted", allowedModels: ["some-other-model"] }
+    });
+    const restrictedKey = ck.json().clientApiKey;
+
+    const res = await openaiApp.inject({
+      method: "POST",
+      url: "/v1/chat/completions",
+      headers: { authorization: `Bearer ${restrictedKey}`, "content-type": "application/json" },
+      payload: { model: "gemini-2.0-flash", messages: [{ role: "user", content: "x" }] }
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.type).toBe("permission_error");
+
+    const list = await openaiApp.inject({
+      method: "GET",
+      url: "/v1/models",
+      headers: { authorization: `Bearer ${restrictedKey}` }
+    });
+    expect(list.json().data.some((m: any) => m.id === "mock-probe")).toBe(false);
   });
 });

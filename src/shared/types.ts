@@ -1,5 +1,9 @@
 export interface EnvConfig {
-  port: number;
+  geminiPort: number;
+  openaiPort: number;
+  adminPort: number;
+  gatewayHost: string;
+  adminHost: string;
   dbPath: string;
   setupToken: string;
   encryptionKey?: string;
@@ -16,7 +20,11 @@ export interface EnvConfig {
 }
 
 export const envSchema = {
-  port: { default: 18765, coerce: true },
+  geminiPort: { default: 18770, coerce: true },
+  openaiPort: { default: 18771, coerce: true },
+  adminPort: { default: 18765, coerce: true },
+  gatewayHost: { default: "0.0.0.0" },
+  adminHost: { default: "127.0.0.1" },
   dbPath: { default: "./data/gemini-proxy.db" },
   setupToken: { default: "" },
   encryptionKey: { default: undefined },

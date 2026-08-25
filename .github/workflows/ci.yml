@@ -25,9 +25,12 @@ jobs:
       - name: Migration startup smoke test (fresh DB must reach readiness)
         run: |
           npm run build
-          SETUP_TOKEN=ci-token PORT=18799 DB_PATH=/tmp/ci-smoke.db \
+          SETUP_TOKEN=ci-token ADMIN_PORT=18799 DB_PATH=/tmp/ci-smoke.db \
             node dist/main.js &
           SERVER_PID=$!
           sleep 3
           curl -fsS http://127.0.0.1:18799/health/ready > /dev/null
+          # Gateways must answer and enforce client-key auth (401 without a key).
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18770/v1beta/models)" = "401"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18771/v1/models)" = "401"
           kill $SERVER_PID

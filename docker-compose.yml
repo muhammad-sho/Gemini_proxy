@@ -4,13 +4,27 @@ services:
     container_name: gemini-proxy
     restart: unless-stopped
     ports:
-      - "18765:18765"
+      # Gemini-protocol gateway — expose publicly (this is the API surface).
+      - "18770:18770"
+      # OpenAI-protocol gateway — expose publicly (this is the API surface).
+      - "18771:18771"
+      # Dashboard/admin — host-side 127.0.0.1 prefix keeps it reachable from
+      # this machine (and any reverse proxy on it) only. Drop the prefix ONLY
+      # if you fully trust everyone on the network, or tunnel via SSH instead.
+      - "127.0.0.1:18765:18765"
     volumes:
       - ./data:/data:Z
     environment:
-      PORT: 18765
-      DB_PATH: /data/gemini-proxy.db
       NODE_ENV: production
+      DB_PATH: /data/gemini-proxy.db
+      # Inside the container all three surfaces must bind 0.0.0.0 for Docker's
+      # port publishing to reach them; restrict exposure via the ports block
+      # above (host-side binding), not by setting ADMIN_HOST to loopback here.
+      GATEWAY_HOST: 0.0.0.0
+      ADMIN_HOST: 0.0.0.0
+      GEMINI_PORT: 18770
+      OPENAI_PORT: 18771
+      ADMIN_PORT: 18765
       # Admin login token for the dashboard (required)
       SETUP_TOKEN: ${SETUP_TOKEN:?set SETUP_TOKEN in .env}
       # Encrypts provider API keys at rest (required in production).

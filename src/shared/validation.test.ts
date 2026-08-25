@@ -3,7 +3,7 @@ import { validateEnv } from "./validation.js";
 
 const base = {
   SETUP_TOKEN: "tok",
-  PORT: "1234",
+  ADMIN_PORT: "1234",
   DB_PATH: "/tmp/x.db",
   KEY_FALLBACK_ATTEMPTS: "3"
 };
@@ -11,7 +11,11 @@ const base = {
 describe("validateEnv", () => {
   it("maps uppercase env to camelCase config", () => {
     const c = validateEnv(base);
-    expect(c.port).toBe(1234);
+    expect(c.adminPort).toBe(1234);
+    expect(c.geminiPort).toBe(18770);
+    expect(c.openaiPort).toBe(18771);
+    expect(c.gatewayHost).toBe("0.0.0.0");
+    expect(c.adminHost).toBe("127.0.0.1");
     expect(c.dbPath).toBe("/tmp/x.db");
     expect(c.setupToken).toBe("tok");
     expect(c.keyFallbackAttempts).toBe(3);
@@ -28,7 +32,7 @@ describe("validateEnv", () => {
     expect(validateEnv(base).trustProxy).toBe(false);
   });
 
-  it("rejects non-numeric port", () => {
-    expect(() => validateEnv({ ...base, PORT: "nope" })).toThrow(/PORT/);
+  it("rejects non-numeric admin port", () => {
+    expect(() => validateEnv({ ...base, ADMIN_PORT: "nope" })).toThrow(/ADMIN_PORT/);
   });
 });
