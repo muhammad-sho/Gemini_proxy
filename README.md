@@ -25,11 +25,13 @@ A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind
 
 The server is a modular TypeScript/Fastify application. One process hosts **three independent HTTP servers**, each with its own port and purpose:
 
-| Surface | Default bind | Port | Speaks |
-| --- | --- | --- | --- |
-| **Gemini gateway** | `0.0.0.0` | `18770` | Gemini protocol only (`/v1beta/*`) |
-| **OpenAI gateway** | `0.0.0.0` | `18771` | OpenAI protocol only (`/v1/chat/completions`, `/v1/models`) |
-| **Dashboard + admin API** | `127.0.0.1` (local) | `18765` | Web UI under `/`, admin JSON under `/api/admin/v1/*`, health checks |
+| Surface | Port | Speaks |
+| --- | --- | --- |
+| **Gemini gateway** | `18770` | Gemini protocol only (`/v1beta/*`) |
+| **OpenAI gateway** | `18771` | OpenAI protocol only (`/v1/chat/completions`, `/v1/models`) |
+| **Dashboard + admin API** | `18765` | Web UI under `/`, admin JSON under `/api/admin/v1/*`, health checks |
+
+All three are published on every interface by default (`GATEWAY_BIND` / `ADMIN_BIND` in `.env`). When running from source without Docker, the dashboard binds to loopback unless `ADMIN_HOST` says otherwise.
 
 Because each surface always knows which wire format it is receiving, there is no format detection: the Gemini gateway forwards Gemini bodies (translating per provider adapter), while the OpenAI gateway translates chat-completion requests into the canonical internal shape before routing.
 
@@ -72,7 +74,7 @@ curl -fsSL -O https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/d
 docker compose up -d
 ```
 
-Open the dashboard at `http://localhost:18765` (the compose file binds it to loopback on the host — reach it via SSH tunnel from elsewhere, e.g. `ssh -L 18765:127.0.0.1:18765 your-server`).
+Open the dashboard at `http://localhost:18765` (or `http://SERVER_IP:18765` from another machine — all three surfaces are published by default; see "Ports and Exposure" to lock down).
 
 First-time setup:
 
@@ -176,16 +178,15 @@ Admin API lives under `/api/admin/v1/*` on the dashboard port and requires the s
 
 # Ports and Exposure
 
-The three surfaces exist so you can expose exactly what the internet needs:
+All three surfaces are published on every interface by default, so the dashboard works out of the box from any machine that can reach the server. The gateway ports only accept proxy client keys; the dashboard port (`18765`) holds admin power (credentials management, logs with payloads), so lock it down if the server is shared or internet-facing.
 
-* **Expose**: the gateway ports (`18770`, `18771`) — they only accept proxy client keys.
-* **Keep local** (recommended): the dashboard port (`18765`) — it holds admin power (credentials management, logs with payloads).
+To keep the dashboard reachable from the local machine only:
 
-Ways to keep the dashboard private while managing a remote server:
-
-1. **Bind to loopback** (default): `ADMIN_HOST=127.0.0.1`, then use an SSH tunnel: `ssh -L 18765:127.0.0.1:18765 user@server`.
+1. **Compose**: set `ADMIN_BIND=127.0.0.1` in `.env` and restart (`docker compose up -d`). Then manage a remote server via SSH tunnel: `ssh -L 18765:127.0.0.1:18765 user@server`.
 2. **Reverse proxy** with its own authentication in front of `/`, keeping the port firewalled.
-3. **Docker Compose**: publish with a host-side loopback prefix — `- "127.0.0.1:18765:18765"` — which is what the shipped compose file does. Inside the container all surfaces bind `0.0.0.0` so publishing works; restriction happens at the host port level.
+3. **Source runs**: `ADMIN_HOST=127.0.0.1` (already the default without Docker).
+
+Similarly `GATEWAY_BIND=127.0.0.1` keeps both API gateways LAN-only.
 
 ---
 
@@ -248,10 +249,11 @@ Optional deployment knobs (see `.env.example`; Docker Compose reads it automatic
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `GEMINI_PORT` / `OPENAI_PORT` / `ADMIN_PORT` | `18770` / `18771` / `18765` | Listen ports for the three surfaces |
-| `GATEWAY_HOST` | `0.0.0.0` | Bind address for both gateway surfaces |
-| `ADMIN_HOST` | `127.0.0.1` | Bind address for dashboard/admin (keep local) |
+| `GATEWAY_BIND` / `ADMIN_BIND` | `0.0.0.0` | Host interfaces the ports are published on (compose); `ADMIN_BIND=127.0.0.1` keeps the dashboard local |
 | `LOG_LEVEL` | `info` (`debug` in dev) | Standard pino levels: `fatal`/`error`/`warn`/`info`/`debug`/`trace` |
 | `TRUST_PROXY` | `false` | Set `true` behind a reverse proxy |
+
+Source runs (no Docker) can additionally use `GATEWAY_HOST` / `ADMIN_HOST` to set app bind addresses directly (`ADMIN_HOST` defaults to loopback there).
 
 All secrets are masked in logs. Readiness (`/health/ready` on the admin port) checks database, schema version, and encryption-key availability.
 
@@ -265,13 +267,13 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 
 # Security
 
-* **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; dashboard/admin is a separate port you can keep loopback-only (see "Ports and Exposure").
+* **Surface isolation**: gateway ports speak only the API protocols and accept only proxy client keys; the dashboard is a separate port. It is published openly by default for easy self-hosting — set `ADMIN_BIND=127.0.0.1` (see "Ports and Exposure") on shared or internet-facing machines.
 * **No secrets in config files**: the admin password is created in the browser on first open (one-time setup endpoint; refuses once an account exists) and stored as a bcrypt hash.
 * Admin auth: session cookie (`httpOnly`, SameSite=strict) + CSRF token cookie mirrored via `x-csrf-token`; login and setup are rate-limited and audited.
 * Client keys and passwords stored hashed (SHA-256 / bcrypt); lookups are hash-based so raw keys are never persisted.
 * Provider credentials encrypted at rest with AES-256-GCM; the key is generated automatically inside `data/` — back up that folder to back up everything.
 * Helmet headers on every surface, CSP for the dashboard; body-size limits everywhere; per-IP rate limiting on all three surfaces.
-* Do not expose port 18765 directly to the internet — keep it local or behind an authenticated proxy.
+* Exposing the dashboard on shared networks? Set `ADMIN_BIND=127.0.0.1` or put an authenticated reverse proxy in front of it.
 
 ---
 
@@ -282,7 +284,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
 * **Readiness failing on encryption** — the app cannot write its encryption key into `data/`; check disk space and folder permissions.
 * **Forgot the admin password?** Stop the app, run `sqlite3 data/gemini-proxy.db "DELETE FROM admin_users; DELETE FROM admin_sessions;"`, start again — the dashboard offers first-run setup once more (client keys and provider credentials are unaffected).
-* **Dashboard unreachable from another machine** — `ADMIN_HOST` defaults to `127.0.0.1` on purpose; use an SSH tunnel or a reverse proxy (see "Ports and Exposure").
+* **Dashboard unreachable from another machine (Docker)** — check that `ADMIN_BIND` in `.env` isn't `127.0.0.1`, and that no firewall blocks the port. Source runs bind the dashboard to loopback by default (`ADMIN_HOST`).
 * **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 
 ---

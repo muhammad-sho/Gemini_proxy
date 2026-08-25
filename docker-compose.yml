@@ -30,11 +30,13 @@ services:
       - ./data:/data:Z
 
     ports:
-      # Format: <host-ip>:<host-port>:<container-port>. Edit the left side to
-      # limit exposure; defaults match the values in .env.
-      - "${GEMINI_PORT:-18770}:${GEMINI_PORT:-18770}"          # Gemini API (public)
-      - "${OPENAI_PORT:-18771}:${OPENAI_PORT:-18771}"          # OpenAI API (public)
-      - "127.0.0.1:${ADMIN_PORT:-18765}:${ADMIN_PORT:-18765}"  # Dashboard/admin (local host only)
+      # Format: <host-bind>:<host-port>:<container-port>. All surfaces are
+      # published on every interface by default; set ADMIN_BIND=127.0.0.1 in
+      # .env to keep the dashboard reachable from this machine only (then use
+      # an SSH tunnel from elsewhere).
+      - "${GATEWAY_BIND:-0.0.0.0}:${GEMINI_PORT:-18770}:${GEMINI_PORT:-18770}"   # Gemini API
+      - "${GATEWAY_BIND:-0.0.0.0}:${OPENAI_PORT:-18771}:${OPENAI_PORT:-18771}"   # OpenAI API
+      - "${ADMIN_BIND:-0.0.0.0}:${ADMIN_PORT:-18765}:${ADMIN_PORT:-18765}"       # Dashboard/admin
 
 # Backup = back up ./data. It holds the SQLite database and everything else
 # the app needs (see README "Backup and migration").
