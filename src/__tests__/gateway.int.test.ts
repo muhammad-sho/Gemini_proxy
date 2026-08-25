@@ -9,6 +9,16 @@ process.env.DATA_DIR = dataDir;
 
 const ADMIN_PASSWORD = "test-admin-password";
 
+/** Cast an inject() response body to the expected shape (test-side only). */
+function json<T>(res: { json(): unknown }): T {
+  return res.json() as T;
+}
+
+interface Cookie { name: string; value: string }
+interface ClientKeyRow { id: string; label: string; allowedModels: string[]; allowedGroups: string[] }
+interface GroupRow { id: string; pairs: Array<{ credentialId: string; modelId: string }>; routingStrategy: string }
+interface CoolingReasonRow { cooldown_reason: string | null }
+
 const hits: Record<string, number> = {};
 
 let mock: Server;
@@ -67,9 +77,9 @@ async function startMock(): Promise<number> {
 }
 
 describe("split gateway surfaces", () => {
-  let adminApp: any;
-  let geminiApp: any;
-  let openaiApp: any;
+  let adminApp: import("../http/server.js").AppServers["admin"];
+  let geminiApp: import("../http/server.js").AppServers["gemini"];
+  let openaiApp: import("../http/server.js").AppServers["openai"];
   let adminCookie: string;
   let csrf: string;
   let clientKey: string;
@@ -115,9 +125,9 @@ describe("split gateway surfaces", () => {
       payload: { password: ADMIN_PASSWORD }
     });
     expect(setup.statusCode).toBe(200);
-    const cookies = setup.cookies.map((c: any) => `${c.name}=${c.value}`).join("; ");
+    const cookies = setup.cookies.map((c: Cookie) => `${c.name}=${c.value}`).join("; ");
     adminCookie = cookies;
-    const sessionCookie = setup.cookies.find((c: any) => c.name === "gemini_csrf");
+    const sessionCookie = setup.cookies.find((c: Cookie) => c.name === "gemini_csrf");
     csrf = sessionCookie?.value ?? "";
 
     const statusAfter = await adminApp.inject({ method: "GET", url: "/api/admin/v1/setup/status" });
@@ -218,7 +228,7 @@ describe("split gateway surfaces", () => {
     const { getDb } = await import("../infrastructure/db/connection.js");
     const rows = getDb()
       .prepare("SELECT state, cooldown_reason FROM model_credential_state WHERE model_id = 'gemini-2.0-flash'")
-      .all() as any[];
+      .all() as Array<{ state: string; cooldown_reason: string | null }>;
     const bad = rows.find(r => r.cooldown_reason === "invalid_key");
     expect(bad?.state).toBe("cooling");
   });
@@ -242,7 +252,7 @@ describe("split gateway surfaces", () => {
     const usage = db.prepare("SELECT COUNT(*) n FROM usage_events").get() as { n: number };
     expect(usage.n).toBeGreaterThanOrEqual(2);
 
-    const logs = db.prepare("SELECT trace_id, final_outcome FROM request_logs ORDER BY id DESC LIMIT 3").all() as any[];
+    const logs = db.prepare("SELECT trace_id, final_outcome FROM request_logs ORDER BY id DESC LIMIT 3").all() as Array<{ final_outcome: string }>;
     expect(logs.length).toBeGreaterThanOrEqual(2);
     expect(logs[0].final_outcome).toBe("success");
   });
@@ -273,7 +283,7 @@ describe("split gateway surfaces", () => {
     const { getDb } = await import("../infrastructure/db/connection.js");
     const reasons = getDb()
       .prepare("SELECT DISTINCT cooldown_reason FROM model_credential_state WHERE state='cooling'")
-      .all() as any[];
+      .all() as CoolingReasonRow[];
     expect(reasons.some(r => r.cooldown_reason === "daily_quota")).toBe(true);
   });
 
@@ -289,7 +299,7 @@ describe("split gateway surfaces", () => {
       payload: { provider: "gemini", apiKey: "GOOD_KEY", baseUrl: `http://127.0.0.1:${port}` }
     });
     expect(probe.statusCode).toBe(200);
-    expect(probe.json().models.some((m: any) => m.id === "mock-probe")).toBe(true);
+    expect(probe.json<{ models: Array<{ id: string }> }>().models.some(m => m.id === "mock-probe")).toBe(true);
 
     const probeBad = await adminApp.inject({
       method: "POST",
@@ -305,7 +315,7 @@ describe("split gateway surfaces", () => {
       headers: { cookie: adminCookie }
     });
     expect(stored.statusCode).toBe(200);
-    expect(stored.json().models.some((m: any) => m.id === "mock-probe")).toBe(true);
+    expect(stored.json<{ models: Array<{ id: string }> }>().models.some(m => m.id === "mock-probe")).toBe(true);
   });
 
   it("derives the model list from selected credentials and serves OpenAI format", async () => {
@@ -315,7 +325,7 @@ describe("split gateway surfaces", () => {
       headers: { authorization: `Bearer ${clientKey}` }
     });
     expect(res.statusCode).toBe(200);
-    const ids = res.json().data.map((m: any) => m.id);
+    const ids = res.json<{ data: Array<{ id: string }> }>().data.map(m => m.id);
     expect(ids).toContain("gemini-2.0-flash");
     expect(ids).toContain("mock-probe");
 
@@ -325,7 +335,7 @@ describe("split gateway surfaces", () => {
       headers: { "x-goog-api-key": clientKey }
     });
     expect(geminiList.statusCode).toBe(200);
-    expect(geminiList.json().models.some((m: any) => m.name === "models/mock-probe")).toBe(true);
+    expect(geminiList.json<{ models: Array<{ name: string }> }>().models.some(m => m.name === "models/mock-probe")).toBe(true);
   });
 
   it("creates a group over key×model pairs, routes through it with its strategy, and scopes candidates", async () => {
@@ -429,7 +439,7 @@ describe("split gateway surfaces", () => {
       url: "/api/admin/v1/state",
       headers: { cookie: adminCookie }
     });
-    const key = state.json().clientKeys.find((k: any) => k.id === id);
+    const key = json<{ clientKeys: ClientKeyRow[] }>(state).clientKeys.find(k => k.id === id)!;
     expect(key.allowedModels).toEqual(["gemini-2.0-flash"]);
   });
 
@@ -480,7 +490,7 @@ describe("split gateway surfaces", () => {
     });
     expect(del.statusCode).toBe(200);
     group = await adminApp.inject({ method: "GET", url: "/api/admin/v1/groups", headers: { cookie: adminCookie } });
-    const afterDelete = group.json().find((g: any) => g.id === groupId);
+    const afterDelete = json<GroupRow[]>(group).find(g => g.id === groupId)!;
     expect(afterDelete.pairs).toHaveLength(1);
     expect(afterDelete.pairs[0].credentialId).toBe(goodCredentialId);
 
@@ -493,7 +503,7 @@ describe("split gateway surfaces", () => {
     });
     expect(renamed.statusCode).toBe(200);
     let state = await adminApp.inject({ method: "GET", url: "/api/admin/v1/state", headers: { cookie: adminCookie } });
-    expect(state.json().clientKeys.find((k: any) => k.id === refKeyId).allowedGroups)
+    expect(json<{ clientKeys: ClientKeyRow[] }>(state).clientKeys.find(k => k.id === refKeyId)!.allowedGroups)
       .toEqual(["integrity-renamed"]);
 
     // A group pair pointing at a nonexistent credential yields the unified
@@ -535,7 +545,31 @@ describe("split gateway surfaces", () => {
     });
     expect(delGroup.statusCode).toBe(200);
     state = await adminApp.inject({ method: "GET", url: "/api/admin/v1/state", headers: { cookie: adminCookie } });
-    expect(state.json().clientKeys.find((k: any) => k.id === refKeyId).allowedGroups).toEqual([]);
+    expect(json<{ clientKeys: ClientKeyRow[] }>(state).clientKeys.find(k => k.id === refKeyId)!.allowedGroups).toEqual([]);
+  });
+
+  it("stores token counts from upstream usageMetadata and aggregates them", async () => {
+    const { getDb } = await import("../infrastructure/db/connection.js");
+    const db = getDb();
+    const latest = db.prepare(
+      "SELECT request_tokens, response_tokens FROM usage_events ORDER BY id DESC LIMIT 1"
+    ).get() as { request_tokens: number | null; response_tokens: number | null };
+    // Mock upstream always answers with prompt=2 / completion=5
+    expect(latest.request_tokens).toBe(2);
+    expect(latest.response_tokens).toBe(5);
+
+    const summary = await adminApp.inject({
+      method: "GET",
+      url: "/api/admin/v1/usage-summary?days=7",
+      headers: { cookie: adminCookie }
+    });
+    expect(summary.statusCode).toBe(200);
+    const body = json<{ days: number; models: Array<{ modelId: string; requests: number; promptTokens: number }> }>(summary);
+    expect(body.days).toBe(7);
+    const flash = body.models.find(m => m.modelId === "gemini-2.0-flash");
+    expect(flash).toBeDefined();
+    expect(flash!.requests).toBeGreaterThan(0);
+    expect(flash!.promptTokens).toBeGreaterThan(0);
   });
 
   // ---- Admin surface ----
@@ -639,7 +673,7 @@ describe("split gateway surfaces", () => {
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.object).toBe("list");
-    expect(body.data.some((m: any) => m.id === "mock-probe")).toBe(true);
+    expect(json<{ data: Array<{ id: string }> }>(res).data.some(m => m.id === "mock-probe")).toBe(true);
   });
 
   it("rejects missing/unknown bearer tokens with an OpenAI-shaped 401", async () => {
@@ -695,6 +729,6 @@ describe("split gateway surfaces", () => {
       url: "/v1/models",
       headers: { authorization: `Bearer ${restrictedKey}` }
     });
-    expect(list.json().data.some((m: any) => m.id === "mock-probe")).toBe(false);
+    expect(list.json<{ data: Array<{ id: string }> }>().data.some(m => m.id === "mock-probe")).toBe(false);
   });
 });

@@ -114,6 +114,12 @@ export function requireAdmin(deps: AppDeps): (req: FastifyRequest) => { sessionI
     );
     if (!data || !data.session) return null;
     if (csrfRequired && !csrfHeader) return null;
+
+    // Sliding renewal: once past half the TTL, active use extends the session.
+    const ttlMs = 24 * 60 * 60 * 1000;
+    if (data.session.expires_at - Date.now() < ttlMs / 2) {
+      deps.adminSessionService.renew(sessionId, ttlMs);
+    }
     return { sessionId, csrfToken: csrfHeader ?? data.session.csrf_token };
   };
 }

@@ -1,4 +1,5 @@
-import { api, type AdminState } from "../../api/client.js";
+import { useCallback, useEffect, useState } from "react";
+import { api, type AdminState, type UsageSummary } from "../../api/client.js";
 import { ConfirmButton } from "../../components/ConfirmButton.js";
 
 function pillClass(count: number): string {
@@ -7,15 +8,30 @@ function pillClass(count: number): string {
 }
 
 export function OverviewPage({ state, reload }: { state: AdminState; reload: () => Promise<void> }) {
-  const usageEntries = Object.entries(state.usageByModel).sort((a, b) => b[1] - a[1]);
-  const maxUsage = Math.max(1, ...usageEntries.map(e => e[1]));
+  const [usageDays, setUsageDays] = useState<1 | 7>(1);
+  const [summary, setSummary] = useState<UsageSummary | null>(null);
+
+  const loadUsage = useCallback(async (days: 1 | 7) => {
+    try {
+      setSummary(await api.getUsageSummary(days));
+    } catch {
+      /* 401 handled globally; other failures leave the previous summary up */
+    }
+  }, []);
+
+  useEffect(() => { void loadUsage(usageDays); }, [usageDays, loadUsage]);
+
+  const refreshAll = async () => {
+    await reload();
+    await loadUsage(usageDays);
+  };
 
   return (
     <section className="page">
       <div className="page-header">
         <h1>Overview</h1>
         <div className="actions">
-          <ConfirmButton prompt="Clear all cooldowns" onConfirm={async () => { await api.clearCooldowns(); await reload(); }}>
+          <ConfirmButton prompt="Clear all cooldowns" onConfirm={async () => { await api.clearCooldowns(); await refreshAll(); }}>
             Clear cooldowns
           </ConfirmButton>
         </div>
@@ -40,20 +56,27 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
         </div>
       </div>
 
-      <h2>Usage by model</h2>
-      {usageEntries.length === 0 ? (
-        <p className="hint">No requests recorded yet.</p>
+      <div className="page-header">
+        <h2>Usage</h2>
+        <div className="actions" role="group" aria-label="Usage window">
+          <button className={`btn ${usageDays === 1 ? "btn-primary" : ""}`} onClick={() => setUsageDays(1)}>Today</button>
+          <button className={`btn ${usageDays === 7 ? "btn-primary" : ""}`} onClick={() => setUsageDays(7)}>Last 7 days</button>
+        </div>
+      </div>
+      {!summary || summary.models.length === 0 ? (
+        <p className="hint">No requests recorded in this window.</p>
       ) : (
         <table className="table">
           <thead>
-            <tr><th>Model</th><th>Requests</th><th /></tr>
+            <tr><th>Model</th><th>Requests</th><th>Prompt tokens</th><th>Completion tokens</th></tr>
           </thead>
           <tbody>
-            {usageEntries.map(([model, count]) => (
-              <tr key={model}>
-                <td><code>{model}</code></td>
-                <td>{count}</td>
-                <td className="bar-cell"><span className={pillClass(count)}>{count === 0 ? "idle" : `${Math.round((count / maxUsage) * 100)}%`}</span></td>
+            {summary.models.map(m => (
+              <tr key={m.modelId}>
+                <td><code>{m.modelId}</code></td>
+                <td><span className={pillClass(m.requests)}>{m.requests}</span></td>
+                <td>{m.promptTokens.toLocaleString()}</td>
+                <td>{m.completionTokens.toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -74,7 +97,9 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
                 <td><code>{c.model_id}</code></td>
                 <td><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
                 <td>{c.cooldown_reason ?? "—"}</td>
-                <td>{new Date(c.cooldown_until).toLocaleTimeString()}</td>
+                <td title={new Date(c.cooldown_until).toLocaleString()}>
+                  {Math.max(0, Math.round((c.cooldown_until - Date.now()) / 1000))}s
+                </td>
               </tr>
             ))}
           </tbody>

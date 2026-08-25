@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { GenerateResponse } from "../../domain/providers/adapter.js";
 import {
   chatRequestToGenerate,
   generateResponseToChat,
@@ -70,8 +71,16 @@ describe("chatRequestToGenerate", () => {
   });
 });
 
+function withFinish(base: GenerateResponse, finishReason: string): GenerateResponse {
+  return { ...base, candidates: [{ ...base.candidates[0], finishReason }] };
+}
+
+function withoutUsage(base: GenerateResponse): GenerateResponse {
+  return { candidates: base.candidates };
+}
+
 describe("generateResponseToChat", () => {
-  const gemini = {
+  const gemini: GenerateResponse = {
     candidates: [
       {
         content: { parts: [{ text: "Hello" }, { text: " world" }], role: "model" },
@@ -83,7 +92,7 @@ describe("generateResponseToChat", () => {
   };
 
   it("joins parts, maps finish reason and usage", () => {
-    const chat = generateResponseToChat(gemini as any, "my-model", "chatcmpl-test");
+    const chat = generateResponseToChat(gemini, "my-model", "chatcmpl-test");
     expect(chat.id).toBe("chatcmpl-test");
     expect(chat.object).toBe("chat.completion");
     expect(chat.model).toBe("my-model");
@@ -94,26 +103,26 @@ describe("generateResponseToChat", () => {
   });
 
   it("generates an id when none supplied", () => {
-    const chat = generateResponseToChat(gemini as any, "m");
+    const chat = generateResponseToChat(gemini, "m");
     expect(chat.id).toMatch(/^chatcmpl-/);
   });
 
   it("maps MAX_TOKENS and SAFETY finish reasons", () => {
     const length = generateResponseToChat(
-      { ...gemini, candidates: [{ ...gemini.candidates[0], finishReason: "MAX_TOKENS" }] } as any,
+      withFinish(gemini, "MAX_TOKENS"),
       "m"
     );
     expect(length.choices[0].finish_reason).toBe("length");
 
     const safety = generateResponseToChat(
-      { ...gemini, candidates: [{ ...gemini.candidates[0], finishReason: "SAFETY" }] } as any,
+      withFinish(gemini, "SAFETY"),
       "m"
     );
     expect(safety.choices[0].finish_reason).toBe("content_filter");
   });
 
   it("falls back to character count when usageMetadata missing", () => {
-    const chat = generateResponseToChat({ candidates: gemini.candidates } as any, "m");
+    const chat = generateResponseToChat(withoutUsage(gemini), "m");
     expect(chat.usage.completion_tokens).toBe(11);
     expect(chat.usage.total_tokens).toBe(11);
   });

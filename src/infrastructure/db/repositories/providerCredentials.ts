@@ -17,6 +17,8 @@ export interface ProviderCredential {
 
 export interface ProviderCredentialWithSecret extends ProviderCredential {
   apiKey: string;
+  /** Insertion order (rowid) — keeps candidate ordering deterministic. */
+  seq: number;
 }
 
 export class ProviderCredentialRepository {
@@ -58,34 +60,37 @@ export class ProviderCredentialRepository {
     return decrypt(encrypted, this.encryptionKey);
   }
 
-  findById(id: string): ProviderCredential | undefined {
-    const row = this.stmtGetById.get(id) as any;
-    if (!row) return undefined;
+  private parseRow(row: Record<string, unknown>): ProviderCredential {
     return {
-      ...row,
-      allowed_models: JSON.parse(row.allowed_models ?? "[]"),
-      allowed_groups: JSON.parse(row.allowed_groups ?? "[]")
+      id: String(row.id),
+      label: String(row.label),
+      provider: row.provider === "openai_compatible" ? "openai_compatible" : "gemini",
+      api_key_encrypted: String(row.api_key_encrypted),
+      base_url: (row.base_url as string | null) ?? null,
+      allowed_models: JSON.parse(String(row.allowed_models ?? "[]")) as string[],
+      allowed_groups: JSON.parse(String(row.allowed_groups ?? "[]")) as string[],
+      created_at: Number(row.created_at),
+      revoked_at: row.revoked_at === null || row.revoked_at === undefined ? null : Number(row.revoked_at)
     };
   }
 
+  findById(id: string): ProviderCredential | undefined {
+    const row = this.stmtGetById.get(id) as Record<string, unknown> | undefined;
+    return row ? this.parseRow(row) : undefined;
+  }
+
   findAll(): ProviderCredential[] {
-    const rows = this.stmtGetAll.all() as any[];
-    return rows.map(row => ({
-      ...row,
-      allowed_models: JSON.parse(row.allowed_models ?? "[]"),
-      allowed_groups: JSON.parse(row.allowed_groups ?? "[]")
-    }));
+    return (this.stmtGetAll.all() as Array<Record<string, unknown>>).map(row => this.parseRow(row));
   }
 
   findAllWithKeys(): ProviderCredentialWithSecret[] {
     const rows = this.db.prepare(
       "SELECT *, rowid AS seq FROM provider_credentials WHERE revoked_at IS NULL ORDER BY rowid ASC"
-    ).all() as any[];
+    ).all() as Array<Record<string, unknown>>;
     return rows.map(row => ({
-      ...row,
-      allowed_models: JSON.parse(row.allowed_models ?? "[]"),
-      allowed_groups: JSON.parse(row.allowed_groups ?? "[]"),
-      apiKey: this.decryptKey(row.api_key_encrypted)
+      ...this.parseRow(row),
+      apiKey: this.decryptKey(String(row.api_key_encrypted)),
+      seq: Number(row.seq)
     }));
   }
 
@@ -104,7 +109,7 @@ export class ProviderCredentialRepository {
     const id = `pc_${randomUUID()}`;
     const encrypted = this.encryptKey(apiKey);
 
-    this.stmtInsert.run(
+    const result = this.stmtInsert.run(
       id,
       label,
       provider,
@@ -124,7 +129,8 @@ export class ProviderCredentialRepository {
       allowed_groups: allowedGroups,
       created_at: Date.now(),
       revoked_at: null,
-      apiKey
+      apiKey,
+      seq: Number(result.lastInsertRowid)
     };
   }
 

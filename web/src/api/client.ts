@@ -30,8 +30,13 @@ export interface AdminState {
   models: Array<{ id: string }>;
   pairs: Array<{ credentialId: string; credentialLabel: string; modelId: string }>;
   groups: Group[];
-  usageByModel: Record<string, number>;
   cooling: Array<{ model_id: string; credential_id: string; cooldown_until: number; cooldown_reason: string | null }>;
+}
+
+export interface UsageSummary {
+  days: 1 | 7;
+  models: Array<{ modelId: string; requests: number; promptTokens: number; completionTokens: number }>;
+  generatedAt: number;
 }
 
 export interface LogRow {
@@ -135,6 +140,8 @@ export const api = {
   login: (token: string) => request<{ ok: true }>("POST", "/api/admin/v1/login", { token }),
   logout: () => request<{ ok: true }>("POST", "/api/admin/v1/logout"),
   getState: () => request<AdminState>("GET", "/api/admin/v1/state"),
+  getUsageSummary: (days: 1 | 7) =>
+    request<UsageSummary>("GET", `/api/admin/v1/usage-summary?days=${days}`),
 
   getSettings: () => request<ProxySettings>("GET", "/api/admin/v1/settings"),
   updateSettings: (patch: Partial<ProxySettings>) => request<ProxySettings>("PUT", "/api/admin/v1/settings", patch),

@@ -15,13 +15,29 @@ export interface ProviderModel {
   capabilities: Record<string, unknown>;
 }
 
+export interface ContentPart {
+  text?: string;
+}
+
+export interface GenerateContent {
+  role?: string;
+  parts: ContentPart[];
+}
+
+export interface GenerationConfig {
+  temperature?: number;
+  topP?: number;
+  maxOutputTokens?: number;
+  stopSequences?: string[];
+}
+
 export interface GenerateRequest {
   model: string;
-  contents: any[];
-  generationConfig?: any;
-  safetySettings?: any[];
-  tools?: any[];
-  systemInstruction?: any;
+  contents: GenerateContent[];
+  generationConfig?: GenerationConfig;
+  safetySettings?: unknown[];
+  tools?: unknown[];
+  systemInstruction?: { parts?: ContentPart[] };
 }
 
 export interface GenerateResponse {
@@ -29,7 +45,7 @@ export interface GenerateResponse {
     content: { parts: Array<{ text: string }>; role: string };
     finishReason: string;
     index: number;
-    safetyRatings?: any[];
+    safetyRatings?: unknown[];
   }>;
   usageMetadata?: {
     promptTokenCount: number;

@@ -66,6 +66,10 @@ export class AdminSessionService {
     this.sessionRepo.delete(sessionId);
   }
 
+  renew(sessionId: string, ttlMs?: number): void {
+    this.sessionRepo.renew(sessionId, ttlMs);
+  }
+
   getCsrfToken(sessionId: string): string | null {
     const session = this.sessionRepo.findById(sessionId);
     return session?.csrf_token ?? null;

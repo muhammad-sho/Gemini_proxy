@@ -34,26 +34,30 @@ export class ClientKeyRepository {
     WHERE id = ?
   `);
 
-  private parseRow(row: any): ClientKey {
+  private parseRow(row: Record<string, unknown>): ClientKey {
     return {
-      ...row,
-      allowed_models: JSON.parse(row.allowed_models ?? "[]"),
-      allowed_groups: JSON.parse(row.allowed_groups ?? "[]")
+      id: String(row.id),
+      key_hash: String(row.key_hash),
+      label: String(row.label),
+      allowed_models: JSON.parse(String(row.allowed_models ?? "[]")) as string[],
+      allowed_groups: JSON.parse(String(row.allowed_groups ?? "[]")) as string[],
+      created_at: Number(row.created_at),
+      revoked_at: row.revoked_at === null || row.revoked_at === undefined ? null : Number(row.revoked_at)
     };
   }
 
   findByHash(keyHash: string): ClientKey | undefined {
-    const row = this.stmtGetByHash.get(keyHash);
+    const row = this.stmtGetByHash.get(keyHash) as Record<string, unknown> | undefined;
     return row ? this.parseRow(row) : undefined;
   }
 
   findById(id: string): ClientKey | undefined {
-    const row = this.stmtGetById.get(id);
+    const row = this.stmtGetById.get(id) as Record<string, unknown> | undefined;
     return row ? this.parseRow(row) : undefined;
   }
 
   findAll(): ClientKey[] {
-    return (this.stmtGetAll.all() as unknown[]).map(row => this.parseRow(row));
+    return (this.stmtGetAll.all() as Array<Record<string, unknown>>).map(row => this.parseRow(row));
   }
 
   create(label: string, allowedModels: string[] = [], allowedGroups: string[] = []): ClientKeyWithSecret {

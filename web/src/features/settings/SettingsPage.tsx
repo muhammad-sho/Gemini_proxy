@@ -33,6 +33,13 @@ export function SettingsPage() {
 
   if (!values) return <p className="hint center">Loading…</p>;
 
+  /** Clamp to the field's bounds immediately — no garbage reaches the server. */
+  const setValue = (key: keyof ProxySettings, raw: string, min: number, max: number) => {
+    const num = Number(raw);
+    if (Number.isNaN(num)) return;
+    setValues({ ...values, [key]: Math.min(max, Math.max(min, Math.round(num))) });
+  };
+
   const save = async () => {
     setBusy(true);
     try {
@@ -67,7 +74,7 @@ export function SettingsPage() {
               min={f.min}
               max={f.max}
               value={values[f.key]}
-              onChange={e => setValues({ ...values, [f.key]: Number(e.target.value) })}
+              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
             />
             <small className="hint">{f.hint}</small>
           </label>
@@ -84,7 +91,7 @@ export function SettingsPage() {
               min={f.min}
               max={f.max}
               value={values[f.key]}
-              onChange={e => setValues({ ...values, [f.key]: Number(e.target.value) })}
+              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
             />
             <small className="hint">{f.hint}</small>
           </label>

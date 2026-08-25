@@ -20,6 +20,7 @@ export class AdminSessionRepository {
   `);
   private stmtDelete = this.db.prepare("DELETE FROM admin_sessions WHERE id = ?");
   private stmtDeleteExpired = this.db.prepare("DELETE FROM admin_sessions WHERE expires_at <= ?");
+  private stmtRenew = this.db.prepare("UPDATE admin_sessions SET expires_at = ? WHERE id = ?");
 
   findById(sessionId: string): AdminSession | undefined {
     return this.stmtGetById.get(sessionId) as AdminSession | undefined;
@@ -44,6 +45,11 @@ export class AdminSessionRepository {
   delete(sessionId: string): boolean {
     const result = this.stmtDelete.run(sessionId);
     return result.changes > 0;
+  }
+
+  /** Sliding renewal: extend the session's expiry (keeps active admins signed in). */
+  renew(sessionId: string, ttlMs: number = 24 * 60 * 60 * 1000): void {
+    this.stmtRenew.run(Date.now() + ttlMs, sessionId);
   }
 
   deleteExpired(): number {

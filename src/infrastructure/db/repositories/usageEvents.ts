@@ -25,6 +25,17 @@ export class UsageEventRepository {
     ORDER BY created_at DESC
     LIMIT ?
   `);
+  private stmtAggregate = this.db.prepare(`
+    SELECT model_id,
+           COUNT(*) AS requests,
+           COALESCE(SUM(request_tokens), 0) AS prompt_tokens,
+           COALESCE(SUM(response_tokens), 0) AS completion_tokens
+    FROM usage_events
+    WHERE created_at >= ?
+    GROUP BY model_id
+    ORDER BY requests DESC
+    LIMIT 100
+  `);
   private stmtPrune = this.db.prepare(`
     DELETE FROM usage_events
     WHERE id NOT IN (
@@ -53,5 +64,24 @@ export class UsageEventRepository {
   /** Retention cap shared with request logs (settings.maxLogEntries). */
   prune(maxEntries: number): number {
     return this.stmtPrune.run(maxEntries).changes;
+  }
+
+  aggregateByModel(sinceSec: number): Array<{
+    modelId: string;
+    requests: number;
+    promptTokens: number;
+    completionTokens: number;
+  }> {
+    return (this.stmtAggregate.all(sinceSec) as Array<{
+      model_id: string;
+      requests: number;
+      prompt_tokens: number;
+      completion_tokens: number;
+    }>).map(r => ({
+      modelId: r.model_id,
+      requests: r.requests,
+      promptTokens: r.prompt_tokens,
+      completionTokens: r.completion_tokens
+    }));
   }
 }

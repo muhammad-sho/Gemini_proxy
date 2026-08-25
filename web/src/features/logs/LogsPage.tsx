@@ -92,7 +92,15 @@ export function LogsPage() {
         </thead>
         <tbody>
           {logs.map(l => (
-            <tr key={l.id} className="row-click" onClick={() => void openDetail(l.id)}>
+            <tr
+              key={l.id}
+              className="row-click"
+              tabIndex={0}
+              role="button"
+              aria-label={`Open log ${l.traceId.slice(0, 8)}`}
+              onClick={() => void openDetail(l.id)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(l.id); } }}
+            >
               <td>{new Date(l.createdAt * 1000).toLocaleTimeString()}</td>
               <td><code>{l.modelId ?? "—"}</code></td>
               <td>{l.responseStatus ?? "—"}</td>

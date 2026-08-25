@@ -35,6 +35,14 @@ function GroupModal({
   const credential = state.credentials.find(c => c.id === credentialId);
   const credentialModels = credential?.allowedModels ?? [];
 
+  // Pairs whose credential no longer selects the model (e.g. edited after the
+  // group was built) would silently route nowhere — flag them and clean on save.
+  const isStale = (p: GroupPair) => {
+    const cred = state.credentials.find(c => c.id === p.credentialId);
+    return !cred || !cred.allowedModels.includes(p.modelId);
+  };
+  const stalePairs = pairs.filter(isStale);
+
   const addPair = () => {
     if (!credentialId || !modelId) return;
     if (pairs.some(p => p.credentialId === credentialId && p.modelId === modelId)) return;
@@ -45,6 +53,7 @@ function GroupModal({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
+    const cleaned = pairs.filter(p => !isStale(p));
     try {
       if (editing) {
         await api.updateGroup(editing.id, {
@@ -52,16 +61,18 @@ function GroupModal({
           description: description.trim(),
           routingStrategy,
           fallbackStrategy,
-          pairs
+          pairs: cleaned
         });
-        toast("info", "Group updated");
+        toast("info", cleaned.length < pairs.length
+          ? `Group updated (${pairs.length - cleaned.length} stale target${pairs.length - cleaned.length > 1 ? "s" : ""} removed)`
+          : "Group updated");
       } else {
         await api.createGroup({
           name: name.trim(),
           description: description.trim(),
           routingStrategy,
           fallbackStrategy,
-          pairs
+          pairs: cleaned
         });
         toast("info", "Group created");
       }
@@ -131,23 +142,34 @@ function GroupModal({
             <table className="table">
               <thead><tr><th>Provider key</th><th>Model</th><th /></tr></thead>
               <tbody>
-                {pairs.map((p, i) => (
-                  <tr key={`${p.credentialId}:${p.modelId}`}>
-                    <td>{labelFor(p.credentialId)}</td>
-                    <td><code>{p.modelId}</code></td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn btn-ghost"
-                        onClick={() => setPairs(pairs.filter((_, idx) => idx !== i))}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {pairs.map((p, i) => {
+                  const stale = isStale(p);
+                  return (
+                    <tr key={`${p.credentialId}:${p.modelId}`} style={stale ? { opacity: 0.6 } : undefined}>
+                      <td>
+                        {labelFor(p.credentialId)}
+                        {stale && <span className="pill pill-error" title="This credential no longer selects this model">stale</span>}
+                      </td>
+                      <td><code>{p.modelId}</code></td>
+                      <td>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          onClick={() => setPairs(pairs.filter((_, idx) => idx !== i))}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          )}
+          {stalePairs.length > 0 && (
+            <p className="hint">
+              {stalePairs.length} target{stalePairs.length > 1 ? "s" : ""} reference models the credential no longer selects — they will be removed when you save.
+            </p>
           )}
         </fieldset>
 

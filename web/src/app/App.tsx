@@ -35,14 +35,24 @@ export function App() {
     <div className="shell">
       <header className="topbar">
         <div className="brand">Gemini Proxy</div>
-        <nav className="tabs" role="tablist">
-          {TABS.map(t => (
+        <nav className="tabs" role="tablist" aria-label="Dashboard sections">
+          {TABS.map((t, i) => (
             <button
               key={t}
               role="tab"
+              id={`tab-${t.replace(/\s+/g, "-").toLowerCase()}`}
               aria-selected={tab === t}
+              tabIndex={tab === t ? 0 : -1}
               className={`tab ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
+              onKeyDown={e => {
+                if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+                e.preventDefault();
+                const delta = e.key === "ArrowRight" ? 1 : -1;
+                const next = TABS[(i + delta + TABS.length) % TABS.length];
+                setTab(next);
+                document.getElementById(`tab-${next.replace(/\s+/g, "-").toLowerCase()}`)?.focus();
+              }}
             >
               {t}
             </button>

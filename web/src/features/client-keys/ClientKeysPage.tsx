@@ -152,7 +152,12 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
       )}
 
       {state.clientKeys.length === 0 ? (
-        <p className="hint">No client keys yet. Create one to start proxying requests.</p>
+        <div className="notice">
+          <p className="hint" style={{ marginTop: 0 }}>
+            Client keys are what your applications use to call the proxy — create one, assign models or groups, and point your app at the gateway.
+          </p>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create a client key</button>
+        </div>
       ) : (
         <table className="table">
           <thead>

@@ -22,6 +22,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [authed, setAuthed] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
+  const authedRef = useRef(false);
 
   const toast = useCallback((kind: "error" | "info", message: string) => {
     const id = nextId.current++;
@@ -29,22 +30,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 5000);
   }, []);
 
+  const markAuthed = useCallback((value: boolean) => {
+    authedRef.current = value;
+    setAuthed(value);
+  }, []);
+
   const login = useCallback(async (token: string) => {
     await api.login(token);
-    setAuthed(true);
-  }, []);
+    markAuthed(true);
+  }, [markAuthed]);
 
   const logout = useCallback(async () => {
     try { await api.logout(); } catch { /* best-effort */ }
-    setAuthed(false);
-  }, []);
+    markAuthed(false);
+  }, [markAuthed]);
 
   useEffect(() => {
-    setUnauthorizedHandler(() => setAuthed(false));
+    setUnauthorizedHandler(() => {
+      // Only surface "expired" when the user was signed in — a wrong password
+      // on the login form is also a 401 and must not spam this toast.
+      if (authedRef.current) {
+        toast("error", "Session expired — please sign in again");
+      }
+      markAuthed(false);
+    });
     // Probe session validity on mount
-    api.getState().then(() => setAuthed(true)).catch(() => setAuthed(false));
+    api.getState().then(() => markAuthed(true)).catch(() => markAuthed(false));
     return () => { setUnauthorizedHandler(null); };
-  }, []);
+  }, [toast, markAuthed]);
 
   return (
     <AppContext.Provider value={{ authed, login, logout, toast }}>

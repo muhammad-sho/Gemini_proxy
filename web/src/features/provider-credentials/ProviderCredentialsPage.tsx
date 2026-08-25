@@ -233,7 +233,12 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
       </div>
 
       {state.credentials.length === 0 ? (
-        <p className="hint">No provider credentials yet. Add at least one to serve requests.</p>
+        <div className="notice">
+          <p className="hint" style={{ marginTop: 0 }}>
+            No provider credentials yet. Add your upstream API key, pick the models it serves, and the proxy starts routing.
+          </p>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add your first provider key</button>
+        </div>
       ) : (
         <table className="table">
           <thead>

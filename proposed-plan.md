@@ -224,7 +224,7 @@ Dashboard tabs in README (Overview/Providers picker/Groups/Logs detail).
 ## Recommended execution waves
 
 1. **Wave 1 — stop the bleeding (P0):** A1, A2, A3, B1 (+tests) — ✅ DONE. Every deprecated/changed item is logged in `CLEANUPS.md`.
-2. **Wave 2 — trust the numbers & the UX:** B2, B3, C1–C4, G1. Makes daily use pleasant.
+2. **Wave 2 — trust the numbers & the UX:** B2, B3, C1–C4, G1 — ✅ DONE (see `CLEANUPS.md`).
 3. **Wave 3 — hardening:** A4, A5, A6, E1–E3, G2. Safety + confidence to refactor.
 4. **Wave 4 — polish & growth:** B4, C5, C6, G3, G4, H*, F*.
 5. **Later milestones (unchanged):** D1 streaming, D2 countTokens — only after Wave 3.

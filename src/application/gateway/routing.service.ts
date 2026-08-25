@@ -184,7 +184,8 @@ export class RoutingService {
         if (result.status >= 200 && result.status < 300) {
           push("attempt_success", { attempt, status: result.status });
           this.stateRepo.recordLatency(input.modelId, credential.id, Date.now() - attemptStartedAt);
-          this.recordUsage(input, credential.id, result.status, Date.now() - startedAt, null);
+          const tokens = extractUsageTokens(result.headers["content-type"], result.body);
+          this.recordUsage(input, credential.id, result.status, Date.now() - startedAt, null, tokens);
           this.persistLog(input, traceId, timeline, result, credential.id, attempt, maxAttempts, startedAt);
           return { ...result, attempts: attempt, outcome: "success", credentialId: credential.id, classification: null };
         }
@@ -194,9 +195,10 @@ export class RoutingService {
         try { parsedBody = JSON.parse(bodyText); } catch { /* non-JSON */ }
 
         const classification = adapter.classifyError(parsedBody, result.status);
+        const errObj = (parsedBody ?? {}) as { error?: { message?: string; details?: unknown[] }; message?: string };
         const policy: CooldownPolicy = cooldownFor(classification, {
-          message: (parsedBody as any)?.error?.message ?? (parsedBody as any)?.message,
-          quotaDetails: (parsedBody as any)?.error?.details
+          message: errObj.error?.message ?? errObj.message,
+          quotaDetails: errObj.error?.details
         });
 
         push("attempt_failed", { attempt, status: result.status, classification, policy });
@@ -215,8 +217,8 @@ export class RoutingService {
 
         lastResult = { ...result, attempts: attempt, outcome: "error", classification };
         // continue to next candidate
-      } catch (err: any) {
-        const aborted = err?.name === "AbortError";
+      } catch (err) {
+        const aborted = err instanceof Error && err.name === "AbortError";
         if (input.abortSignal.aborted) {
           push("client_aborted", { attempt });
           this.persistLog(input, traceId, timeline, {
@@ -224,8 +226,8 @@ export class RoutingService {
           }, credential.id, attempt, maxAttempts, startedAt, "aborted");
           throw new ClientDisconnectedError(traceId);
         }
-        push("attempt_exception", { attempt, error: aborted ? "timeout" : String(err?.message ?? err).slice(0, 200) });
-        this.stateRepo.incrementError(input.modelId, credential.id, aborted ? "timeout" : String(err?.message ?? "").slice(0, 200));
+        push("attempt_exception", { attempt, error: aborted ? "timeout" : errMessage(err).slice(0, 200) });
+        this.stateRepo.incrementError(input.modelId, credential.id, aborted ? "timeout" : errMessage(err).slice(0, 200));
         lastResult = {
           status: 502,
           headers: { "content-type": "application/json" },
@@ -338,7 +340,8 @@ export class RoutingService {
     credentialId: string,
     statusCode: number | null,
     latencyMs: number,
-    errorClassification: string | null
+    errorClassification: string | null,
+    tokens?: { prompt: number; completion: number }
   ): void {
     if (!input.clientKeyId) return;
     try {
@@ -346,8 +349,8 @@ export class RoutingService {
         client_key_id: input.clientKeyId,
         provider_id: credentialId,
         model_id: input.modelId,
-        request_tokens: null,
-        response_tokens: null,
+        request_tokens: tokens?.prompt ?? null,
+        response_tokens: tokens?.completion ?? null,
         latency_ms: latencyMs,
         status_code: statusCode,
         error_message: errorClassification
@@ -445,4 +448,31 @@ function sanitizeHeaders(headers: Record<string, string>): Record<string, string
 
 function truncate(text: string, maxChars: number): string {
   return text.slice(0, maxChars);
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+interface UsageMetadataShape {
+  usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
+}
+
+/**
+ * Pull prompt/completion token counts out of a successful Gemini-shaped body
+ * (native Gemini responses and adapter-translated responses both carry it).
+ */
+export function extractUsageTokens(contentType: string | undefined, body: Buffer): { prompt: number; completion: number } {
+  if (!contentType || !contentType.includes("application/json") || body.length === 0) {
+    return { prompt: 0, completion: 0 };
+  }
+  try {
+    const parsed = JSON.parse(body.toString("utf8")) as UsageMetadataShape;
+    return {
+      prompt: parsed.usageMetadata?.promptTokenCount ?? 0,
+      completion: parsed.usageMetadata?.candidatesTokenCount ?? 0
+    };
+  } catch {
+    return { prompt: 0, completion: 0 };
+  }
 }

@@ -13,6 +13,16 @@ import {
 import { settingsUpdateSchema } from "./../../domain/settings/settingsService.js";
 import { deriveModelCatalog, derivePairs } from "../../application/gateway/catalog.js";
 
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+const OUTCOMES = ["success", "error", "timeout", "aborted", "no_keys"] as const;
+type Outcome = (typeof OUTCOMES)[number];
+function isOutcome(value: string | undefined): value is Outcome {
+  return OUTCOMES.includes(value as Outcome);
+}
+
 function guard(deps: AppDeps, req: FastifyRequest): boolean {
   return requireAdmin(deps)(req) !== null;
 }
@@ -34,10 +44,6 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         id: k.id, label: k.label, allowedModels: k.allowed_models,
         allowedGroups: k.allowed_groups, createdAt: k.created_at
       }));
-      const usageByModel = deps.usageRepo.getRecent(500).reduce<Record<string, number>>((acc, e) => {
-        acc[e.model_id] = (acc[e.model_id] ?? 0) + 1;
-        return acc;
-      }, {});
       const cooling = deps.db.prepare(
         "SELECT model_id, credential_id, cooldown_until, cooldown_reason FROM model_credential_state WHERE state = 'cooling' AND cooldown_until > ?"
       ).all(Date.now());
@@ -51,8 +57,19 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         pairs: derivePairs(credentials),
         groups: deps.groupRepo.list(),
         clientKeys,
-        usageByModel,
         cooling
+      };
+    });
+
+    // ---- Usage metrics (SQL-aggregated over a time window) ----
+    app.get("/usage-summary", async (req) => {
+      const q = req.query as { days?: string };
+      const days = q.days === "7" ? 7 : 1;
+      const sinceSec = Math.floor(Date.now() / 1000) - days * 24 * 60 * 60;
+      return {
+        days,
+        models: deps.usageRepo.aggregateByModel(sinceSec),
+        generatedAt: Math.floor(Date.now() / 1000)
       };
     });
 
@@ -67,9 +84,9 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       try {
         const models = await deps.probeService.probe(parsed.data);
         return { models: models.map(m => ({ id: m.id, displayName: m.displayName })) };
-      } catch (err: any) {
+      } catch (err) {
         return reply.status(502).send({
-          error: { code: 502, message: String(err?.message ?? err).slice(0, 300), requestId: req.id }
+          error: { code: 502, message: errMessage(err).slice(0, 300), requestId: req.id }
         });
       }
     });
@@ -84,9 +101,9 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       try {
         const models = await deps.probeService.probeCredential(credential);
         return { models: models.map(m => ({ id: m.id, displayName: m.displayName })) };
-      } catch (err: any) {
+      } catch (err) {
         return reply.status(502).send({
-          error: { code: 502, message: String(err?.message ?? err).slice(0, 300), requestId: req.id }
+          error: { code: 502, message: errMessage(err).slice(0, 300), requestId: req.id }
         });
       }
     });
@@ -108,8 +125,8 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         );
         recordAudit(deps, null, "create", "provider_credential", created.id, req.ip);
         return reply.status(201).send({ id: created.id });
-      } catch (err: any) {
-        return reply.status(500).send({ error: { code: 500, message: String(err?.message ?? err), requestId: req.id } });
+      } catch (err) {
+        return reply.status(500).send({ error: { code: 500, message: errMessage(err), requestId: req.id } });
       }
     });
 
@@ -161,8 +178,8 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
         const created = deps.groupRepo.create(parsed.data);
         recordAudit(deps, null, "create", "group", created.id, req.ip);
         return reply.status(201).send(created);
-      } catch (err: any) {
-        const message = String(err?.message ?? err);
+      } catch (err) {
+        const message = errMessage(err);
         if (message.includes("UNIQUE")) {
           return reply.status(409).send({ error: { code: 409, message: "A group with this name already exists", requestId: req.id } });
         }
@@ -181,8 +198,8 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       let updated;
       try {
         updated = deps.groupRepo.update(id, parsed.data);
-      } catch (err: any) {
-        const message = String(err?.message ?? err);
+      } catch (err) {
+        const message = errMessage(err);
         if (message.includes("UNIQUE")) {
           return reply.status(409).send({ error: { code: 409, message: "A group with this name already exists", requestId: req.id } });
         }
@@ -248,7 +265,7 @@ export function adminRoutes(deps: AppDeps): FastifyPluginAsync {
       const q = req.query as Record<string, string | undefined>;
       const result = deps.logRepo.findFiltered({
         model: q.model,
-        outcome: q.outcome as any,
+        outcome: isOutcome(q.outcome) ? q.outcome : undefined,
         query: q.q,
         limit: Math.min(Number(q.limit ?? 50), 200),
         offset: Number(q.offset ?? 0)
