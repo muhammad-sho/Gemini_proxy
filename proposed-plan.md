@@ -1,365 +1,230 @@
-  ## Summary
-
-  Rebuild the app as a modular TypeScript/Node service with a small React/Vite dashboard, while keeping the self-hosted single-node experience simple.
-
-  Retain:
-
-  - Client API authentication
-  - Provider-key pools and least-used routing
-  - Retry, cooldown, quota, and failure handling
-  - Gemini and OpenAI-compatible provider adapters
-  - Model discovery and caching
-  - Model-group allowlists and expansion
-  - Admin dashboard and client-key management
-  - Usage metrics and operational request logs
-  - SQLite persistence and Docker deployment
-
-  Defer aliases, streaming, and advanced tenancy until the core architecture is stable.
-
-  Existing database/API compatibility is not required because the app has no real users yet.
-
-  ## Architecture Changes
-
-  ### Backend
-
-  server.js has been replaced by a layered TypeScript structure:
-
-  src/
-    main.ts
-    config/
-      env.ts
-  http/
-    server.ts
-    routes/
-      health.routes.ts
-      gateway.routes.ts
-      openai.routes.ts
-      clientAccess.ts
-      auth.routes.ts
-      admin.routes.ts
-    domain/
-      auth/
-      providers/
-      routing/
-    application/
-      gateway/
-    infrastructure/
-      db/
-        connection.ts
-        repositories/
-      providers/
-        gemini.adapter.ts
-        openai-compatible.adapter.ts
-      logging/
-    shared/
-      crypto.ts
-      validation.ts
-      time.ts
-      types.ts
-
-  In use:
-
-  - Strict TypeScript
-  - Fastify for routing, lifecycle, validation, and centralized errors
-  - Zod for environment and request validation
-  - Pino for structured logs
-  - Ordered, idempotent migrations recorded in a schema_version table and applied once at startup
-  - Repositories between business logic and SQLite
-  - Dependency injection through the composition root in server.ts; repositories currently bind to the global database singleton
-
-  Remaining backend work:
-
-  - Extract a shared errors module and reusable middleware
-  - Inject the database handle into repositories instead of the global singleton
-
-  The request path should become:
-
-  HTTP route
-    → authentication
-    → request validation
-    → application use case
-    → provider/router service
-    → repository and provider ports
-    → response mapper
-
-  No route should directly contain SQL, provider HTTP calls, cooldown policy, or business rules.
-
-  ### Domain boundaries
-
-  Create explicit services for:
-
-  - Client-key authentication
-  - Admin sessions and CSRF
-  - Provider credential management
-  - Model-group management and expansion
-  - Model availability
-  - Key selection and retry policy
-  - Cooldown classification
-  - Model-cache refresh
-  - Usage recording
-  - Operational request logging
-
-  The routing service should receive provider candidates through an interface and return a normalized result. Provider-specific URL construction, authentication headers, error formats, and model discovery remain inside adapters.
-
-  Routing must support:
-
-  - Global request deadline
-  - Maximum attempts
-  - Abort propagation when the client disconnects
-  - Deadline-aware sequential fallback behavior
-  - Deterministic key ordering
-  - Cooldown-aware selection
-  - Safe handling of invalid credentials and quota exhaustion
-
-  ### Persistence
-
-  Schema changes ship as an ordered, idempotent migration list applied at startup and tracked in a schema_version table; ad-hoc ALTER TABLE patching is gone.
-
-  The schema uses clear names and constraints for:
-
-  - admin_users (a single seeded admin account)
-  - admin_sessions
-  - client_keys
-  - provider_credentials
-  - model_groups
-  - models
-  - model_cache
-  - model_credential_state
-  - usage_events
-  - request_logs
-  - audit_logs
-  - app_metadata (holds the runtime-tunable Settings blob)
-
-  Client-key and provider-credential restrictions are stored as JSON arrays (allowed_models, allowed_groups) on the owning rows rather than in separate mapping tables.
-
-  Add appropriate indexes for:
-
-  - Client-key hash lookup
-  - Model/credential routing
-  - Usage by model and day
-  - Cooldown expiry
-  - Request-log filtering and pagination
-  - Audit-log time ordering
-
-  On first open of the dashboard (no admin account yet) a one-time setup screen creates the admin password (bcrypt-hashed, min 8 chars); no secrets are configured via environment variables.
-
-  Secrets never come back from repositories except one-time creation responses. Provider keys are AES-256-GCM encrypted; the key is generated automatically inside the data directory on first use, so backing up that directory backs up everything. Readiness fails only if the key cannot be resolved (e.g. disk error).
-
-  ### API contracts
-
-  Define versioned contracts in TypeScript/Zod.
-
-  One process hosts three independent listeners so each surface can be exposed or firewalled separately:
-
-  - Gemini gateway — `GEMINI_PORT` (default 18770), bound to `GATEWAY_HOST`
-  - OpenAI gateway — `OPENAI_PORT` (default 18771), bound to `GATEWAY_HOST`
-  - Dashboard/admin — `ADMIN_PORT` (default 18765), bound to `ADMIN_HOST` (loopback by default)
-
-  Health endpoints live on the admin surface:
-
-  GET /health/live
-  GET /health/ready
-
-  Gemini gateway endpoints:
-
-  GET  /v1beta/models
-  POST /v1beta/models/:model:generateContent
-
-  v1 proxies only :generateContent. Other model actions, including streaming variants, stay out of scope until their milestone lands.
-
-  OpenAI gateway endpoints:
-
-  GET  /v1/models
-  POST /v1/chat/completions
-
-  The OpenAI surface accepts OpenAI wire format only (Bearer auth), translating chat completions to and from the canonical internal shape; streaming stays out of scope there too.
-
-  Admin endpoints should use a versioned namespace:
-
-  POST /api/admin/v1/login
-  POST /api/admin/v1/logout
-  GET  /api/admin/v1/setup/status
-  POST /api/admin/v1/setup
-  GET  /api/admin/v1/state
-  POST /api/admin/v1/client-keys
-  DELETE /api/admin/v1/client-keys/:id
-  POST /api/admin/v1/provider-credentials
-  PUT  /api/admin/v1/provider-credentials/:id
-  DELETE /api/admin/v1/provider-credentials/:id
-  GET  /api/admin/v1/model-groups
-  POST /api/admin/v1/model-groups
-  PUT  /api/admin/v1/model-groups/:name
-  DELETE /api/admin/v1/model-groups/:name
-  GET  /api/admin/v1/logs
-  GET  /api/admin/v1/logs/:id
-  POST /api/admin/v1/models/refresh
-  POST /api/admin/v1/cooldowns/clear
-  GET  /api/admin/v1/settings
-  PUT  /api/admin/v1/settings
-
-  Setup endpoints are public and one-time: `GET /setup/status` tells the dashboard whether first-run provisioning is needed; `POST /setup` creates the admin account (min 8 chars) and refuses with 409 afterwards. Settings changes are audited.
-
-  Login and logout share the versioned namespace with the rest of the admin API, on the dashboard port.
-
-  Standardize error responses:
-
-  {
-    error: {
-      code: number;
-      message: string;
-      requestId: string;
-      details?: unknown;
-    }
-  }
-
-  Every emitter — route handlers, services, and the central Fastify error handler — must use this numeric shape.
-
-  The gateway should preserve upstream status and body semantics where appropriate, while internally logging a normalized classification.
-
-  ### Frontend
-
-  Split the dashboard into a real frontend:
-
-  web/
-    index.html
-    src/
-      main.tsx
-      app/
-      api/
-      auth/
-      components/
-      features/
-        overview/
-        client-keys/
-        provider-credentials/
-        model-groups/
-        models/
-        logs/
-        settings/
-      styles/
-    vite.config.ts
-
-  Use React with Vite and TypeScript.
-
-  Remove:
-
-  - Inline JavaScript
-  - Inline event handlers
-  - Duplicated functions
-  - Global mutable browser state
-  - HTML string construction for complex views
-  - Dashboard logic embedded in the backend
-
-  Use typed API clients, feature-local state, reusable table/modal/form components, centralized authentication-expiry handling, and a single error/toast mechanism.
-
-  The first frontend migration should preserve the existing visual language and workflows while simplifying the implementation.
-
-  ### Operations and security
-
-  Add:
-
-  - Graceful shutdown for HTTP server, database, timers, and in-flight work
-  - Separate liveness and readiness checks
-  - Structured JSON logs with request IDs
-  - Configurable log levels
-  - Secure cookie configuration
-  - Strict proxy-header handling
-  - Central request-body and response-size limits
-  - Rate limits scoped by address and credential
-  - CSP without unsafe-inline
-  - Explicit upstream-header allowlist
-  - Backup and restore documentation
-  - SQLite integrity and migration checks
-  - Docker image running as non-root
-  - Container healthcheck
-  - Reproducible dependency lockfile
-  - CI checks for type errors, lint, tests, frontend build, Docker build, and migration startup
-
-  Update documentation to match the real feature set and remove references to unfinished aliases.
-
-  ## Implementation Sequence
-
-  1. Create the TypeScript package structure, dependency manifest, compiler configuration, linting, formatting, and test setup.
-  2. Add configuration validation and application bootstrap.
-  3. Implement SQLite connection, migrations, repositories, and seed/setup behavior.
-  4. Extract authentication and admin-session services.
-  5. Implement provider adapter interfaces and Gemini/OpenAI-compatible adapters.
-  6. Implement routing, retries, cooldowns, deadlines, abort handling, and model caching.
-  7. Implement gateway and admin HTTP routes against typed contracts, including model-group management.
-  8. Build the dashboard feature-by-feature with typed API calls.
-  9. Add Docker, environment examples, backup guidance, and CI enforcement.
-  10. Remove the monolithic files and all ad-hoc patch scripts after behavior is covered by tests.
-
-  ## Test Plan
-
-  ### Unit tests
-
-  - Environment validation
-  - Password hashing and constant-time comparisons
-  - Client-key hashing and lookup
-  - CSRF/session expiry
-  - Model and credential allowlists
-  - Model-group CRUD and expansion
-  - Key ordering and least-used selection
-  - Cooldown classification
-  - Daily quota reset calculations
-  - Retry limits and global deadlines
-  - Model-cache freshness and fallback behavior
-  - Provider request/response translation
-
-  ### Integration tests
-
-  - Fresh database migration
-  - Restart against an existing migrated database
-  - Setup and login flow
-  - Client-key creation and deletion
-  - Provider credential management and editing
-  - Model-group management
-  - Model refresh and cache fallback
-  - Usage aggregation and cleanup
-  - Audit-log creation
-  - Admin authorization and CSRF rejection
-
-  ### HTTP/provider tests
-
-  Use a local mock upstream to verify:
-
-  - Successful generation
-  - Invalid provider key fallback
-  - Rate-limit fallback
-  - Daily-quota cooldown
-  - Provider timeout behavior
-  - Client disconnect abort
-  - Maximum request/response size handling
-  - No credential leakage in logs or responses
-  - Model discovery across pagination
-
-  ### Frontend tests
-
-  - Login and session-expiry recovery
-  - Loading/error/empty states
-  - Client-key creation
-  - Provider-key management
-  - Usage rendering
-  - Log filtering and pagination
-  - Destructive-action confirmation
-  - Accessible keyboard and modal behavior
-
-  ### Acceptance criteria
-
-  - No business logic remains in route handlers or UI templates.
-  - npm run check performs type checking, linting, tests, and frontend build successfully.
-  - A fresh Docker deployment starts with one documented command.
-  - A database migration failure prevents readiness.
-  - Provider failures cannot hang a request beyond the configured deadline.
-  - Client disconnects cancel upstream work.
-  - Secrets are absent from API responses and structured logs.
-  - Adding a new provider requires implementing an adapter and tests, without modifying routing logic.
-  - Adding a dashboard feature requires changing one feature module rather than a single global HTML file.
-
-  ## Assumptions
-
-  - SQLite remains the default persistence layer for self-hosted deployments.
-  - The codebase may reset or replace the current test database; no legacy schema compatibility is required.
-  - The initial redesign targets one process and one node, but repositories, sessions, caches, and provider ports must be replaceable later.
-  - Streaming, countTokens, advanced quotas, tenancy, distributed sessions, Redis, and PostgreSQL are follow-up milestones after the modular v1 is stable.
+# Gemini Proxy — Review & Improvement Roadmap
+
+Status snapshot: the modular rebuild is complete and verified (66/66 tests, `npm run check`
+green). Three isolated surfaces (Gemini :18770, OpenAI :18771, dashboard :18765), zero-config
+first-run setup, live model probing, pair-based routing groups, runtime Settings tab,
+env-free deployment, single `./data` folder for backups.
+
+This document replaces the original rebuild plan. It is the living roadmap toward an
+**error-free, robust, lightweight, simple, user-friendly** app. Priorities: P0 = correctness/
+robustness, P1 = user-friendliness/safety, P2 = polish/lightweight. Effort: S ≤ half day,
+M ≈ a day, L = multi-day.
+
+---
+
+## A. Correctness & robustness (P0)
+
+### A1. Referential integrity on deletes — M
+Problem: deleting a provider credential leaves its pairs inside `model_group_pairs` (dead
+targets in the Groups editor, ghosts in `resolveForModel`); deleting a group leaves its name
+dangling inside `client_keys.allowed_groups` (silent broken permission); renaming a group
+breaks every client key that referenced the old name.
+Fix:
+- Credential delete → transactionally remove its rows from `model_group_pairs`.
+- Group rename → update `client_keys.allowed_groups` entries in the same transaction.
+- Group delete → strip the name from all client keys' `allowed_groups`.
+Files: `modelGroups.ts`, `providerCredentials.ts` (or a small `integrity.ts` in db layer),
+`admin.routes.ts`. Acceptance: integration tests — delete credential → group has no ghost
+pairs; rename group → client key follows; delete group → name removed from keys.
+
+### A2. Unified proxy-origin error envelope — S
+Problem: `RoutingService.route()` returns `{ error: "…" }` (bare string) for the no-capable-
+credential case, while every other proxy-origin error uses
+`{ error: { code, message, requestId } }`. The README promises one envelope.
+Fix: emit `{ error: { code: 503, message, requestId: traceId } }`; keep upstream bodies
+verbatim elsewhere. Files: `routing.service.ts`, integration assertion. Acceptance: grep finds
+no bare-string envelopes; test asserts shape on both gateways.
+
+### A3. Frontend async error handling — S
+Problem: `LogsPage.load()` has try/finally without catch → non-401 failures become unhandled
+rejections with stale data and no feedback; `openDetail` silently swallows errors.
+Fix: add catch → toast; disable pager during load; surface detail-open errors.
+Files: `LogsPage.tsx`. Acceptance: forced 500 shows toast; no console rejections.
+
+### A4. Search debounce + request race guard — S
+Problem: every keystroke in the log search fires a GET; fast typing can race and render
+out-of-order results.
+Fix: 300 ms debounce on `query`, abort/ignore stale responses (monotonic request id).
+Acceptance: one network call per settled input.
+
+### A5. Probe hardening — S
+Problem: live model probing hits arbitrary base URLs entered by the admin (SSRF-ish surface
+on an admin-only endpoint — low risk, worth tightening) and relies on the adapter's fixed
+30 s timeout only.
+Fix: reject `baseUrl` pointing at loopback/link-local ranges unless the deployment sets an
+allow flag; cap response parsing size. Acceptance: unit test rejecting `http://127.0.0.1`,
+`http://[::1]`, `http://169.254.x`.
+
+### A6. Migration & startup guarantees (keep + codify) — S
+Already good (versioned migrations, readiness gates on schema+db+encryption, CI smoke).
+Add: CI step asserting an *old* database migrates cleanly (create v-current-minus-one fixture,
+boot, expect ready). Acceptance: CI red on regression.
+
+---
+
+## B. Data lifecycle & honest metrics (P0/P1)
+
+### B1. Usage-event retention — S
+Problem: `usage_events` grows forever (only request logs are pruned).
+Fix: apply `maxLogEntries` (or a dedicated setting) to `usage_events` on insert, same pattern
+as request-log pruning. Acceptance: test inserting N+k keeps newest N.
+
+### B2. Honest overview numbers — S
+Problem: "Usage by model" is computed from the most recent 500 events — mislabeled and wrong
+at scale.
+Fix: aggregate with SQL over a chosen window (today / 7d toggle), using the
+existing `(client|provider, model, created_at)` indexes. Acceptance: numbers match direct SQL.
+
+### B3. Token accounting — S
+Problem: `usage_events.request_tokens/response_tokens` are always null even though Gemini
+responses carry `usageMetadata` (and the OpenAI path maps them into chat responses).
+Fix: parse usageMetadata on success and store prompt/completion tokens; expose totals in
+Overview. Acceptance: integration test asserts stored tokens equal mock values.
+
+### B4. Audit log visibility — M
+Problem: setup/login/logout/mutations write `audit_logs` nobody can see.
+Fix: read-only admin endpoints (`GET /audit-logs` with time/action filters) + simple
+dashboard section under Settings ("Security log"). Acceptance: actions taken in the UI appear
+there.
+
+---
+
+## C. User-friendliness (P1)
+
+### C1. Session lifetime & feedback — S
+Problem: sessions expire after exactly 24 h with no warning; users get logged out mid-work.
+Fix: sliding renewal (extend expiry on activity), and the existing global 401 handler already
+returns users to login cleanly — add a toast "Session expired". Acceptance: active use past
+24 h stays signed in.
+
+### C2. Keyboard & modal accessibility — M
+Problem: modals lack focus trap/restoration; log rows open details via bare onClick (not
+keyboard reachable); tab list lacks arrow-key navigation.
+Fix: shared focus-trap util in `Modal`, rows as buttons/`tabIndex` + Enter handler, arrow-key
+tabs. Acceptance: full dashboard flow achievable by keyboard.
+
+### C3. Forms that prevent mistakes — S
+Problems: Settings numeric inputs accept garbage until server rejects; credential/group forms
+allow saving states that route to nothing (e.g. group with pairs whose models aren't selected
+on the credential anymore after an edit).
+Fix: clamp/min-max inline validation mirroring the zod bounds; Groups editor warns when a
+pair references a model no longer selected on its credential (offer one-click cleanup).
+Acceptance: invalid input blocked client-side with message.
+
+### C4. Guided empty states — S
+Problem: first-run flow ends at an empty dashboard.
+Fix: each empty page gets one-line guidance + action button (Providers → "add your first key";
+Client keys → "create a key"; Groups → disabled until a credential exists, explaining why).
+Acceptance: a new admin can go from zero to a working client key without docs.
+
+### C5. Consistent destructive patterns & copy — S
+Problem: ConfirmButton labels vary; deletion of entities referenced elsewhere (credential in
+groups, key with traffic) gives no consequence hint.
+Fix: standardize "Delete X?" prompts listing consequences ("used by 2 groups").
+Acceptance: review pass over all destructive actions.
+
+### C6. Live status niceties — S
+Ideas: relative timestamps with tooltips, cooling countdown timers on Overview, copy-button
+for client-key id, filter chips on Logs. Small, high perceived quality.
+
+---
+
+## D. Protocol completeness (P2 — feature work, explicitly deferred until core is stable)
+
+### D1. Streaming — L
+Today `streamGenerateContent`/`stream:true` either buffer whole SSE responses (Gemini ingress
+forwards `alt=sse`) or get rejected (OpenAI ingress). Decide and implement properly:
+Gemini→Gemini byte-passthrough streaming; OpenAI SSE translation; keep deadline/abort
+semantics per-chunk. Large change to `callUpstream` (response as stream, backpressure,
+size caps per chunk).
+
+### D2. countTokens passthrough — S
+Allow-list the second action for capable providers (native passthrough; translate for
+openai-compatible where feasible, else clear 501).
+
+### D3. Richer model metadata — S
+Probe already receives capabilities/display names upstream-side; optionally cache names
+in-memory per session for nicer pickers without persisting (respecting "never store"
+rule for retrieval results).
+
+---
+
+## E. Security hardening (P1)
+
+### E1. CSP without `unsafe-inline` — S
+Dashboard CSS is external since the Vite build; try removing `styleSrc 'unsafe-inline'`,
+verify visually, keep a nonce-based fallback if React inline styles ever need it.
+
+### E2. Rate-limit tuning — M
+Single static 300/min/IP today. Move baseline to Settings (admin-tunable), add a stricter
+bucket for `/setup` + `/login` (brute-force), and consider per-client-key limits on gateway
+surfaces (429 with `retry-after`). Acceptance: config knobs documented; tests for buckets.
+
+### E3. Cookie/session headers review — S
+When served over HTTPS/reverse proxy: `__Host-` cookie prefixes, HSTS opt-in env flag.
+Acceptance: checklist verified behind a TLS proxy.
+
+### E4. Dependency & image hygiene (keep green) — S
+Dependabot/renovate config, `npm audit` gate (high severity), monthly base-image bump;
+document better-sqlite3 toolchain pinning.
+
+---
+
+## F. Lightweight & performance (P2)
+
+### F1. Query/statement audit — S
+All hot paths use prepared statements ✓; verify indexes cover the new pair queries
+(`idx_model_group_pairs_target` ✓) and log-search LIKE pattern (consider FTS5 later only if
+search becomes slow at MAX_LOG_ENTRIES=100k).
+### F2. Startup/shutdown polish — S
+WAL checkpoint on graceful shutdown; log DB size + row counts at boot (debug level).
+### F3. Bundle — S
+65 KB gzipped dashboard is fine; defer code-splitting until >150 KB gz.
+### F4. Container — S
+Runtime stage already minimal alpine + pruned node_modules; add `IMAGE` size badge/check
+(<200 MB uncompressed target) to CI so regressions surface.
+
+---
+
+## G. Quality gates (P1)
+
+### G1. Type-clean tests — S
+40 `@typescript-eslint/no-explicit-any` warnings concentrate in the integration test; add
+small typed helpers (inject wrappers, cookie jar type) and enable `--max-warnings=0` in CI.
+
+### G2. Frontend component tests — M
+Vitest + Testing Library for: ModelSelector (fetch/move/remove/exclude-selected),
+GroupModal (pair builder), ClientKeyModal permissions, Settings clamping, LogsPage
+(error toast + pagination). No backend needed (mock api module).
+
+### G3. One end-to-end smoke — M
+Playwright (headless) against the built app: boot fresh DATA_DIR → setup → add credential
+(mock upstream) → select models → create group → create client key → call both gateways →
+see logs. Single happy-path test, runs in CI after build.
+
+### G4. Coverage floors — S
+Vitest coverage thresholds (lines ≥80% overall; routing/keySelection/settings ≥90%) once
+G2 lands.
+
+---
+
+## H. Documentation (P2)
+
+### H1. Architecture refresh — S
+README tree + diagram update (three surfaces, catalog derivation, group plans, settings);
+sequence diagrams for a routed request (auth → allowlist → plan → attempts → logging).
+### H2. API reference — S
+One compact table per surface including the new probe/groups/settings/setup endpoints with
+request/response examples.
+### H3. Screenshots — S
+Dashboard tabs in README (Overview/Providers picker/Groups/Logs detail).
+
+---
+
+## Recommended execution waves
+
+1. **Wave 1 — stop the bleeding (P0):** A1, A2, A3, B1 (+tests). Small, removes real defects.
+2. **Wave 2 — trust the numbers & the UX:** B2, B3, C1–C4, G1. Makes daily use pleasant.
+3. **Wave 3 — hardening:** A4, A5, A6, E1–E3, G2. Safety + confidence to refactor.
+4. **Wave 4 — polish & growth:** B4, C5, C6, G3, G4, H*, F*.
+5. **Later milestones (unchanged):** D1 streaming, D2 countTokens — only after Wave 3.
