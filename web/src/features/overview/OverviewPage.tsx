@@ -135,17 +135,17 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
       {state.cooling.length === 0 ? (
         <p className="hint">No keys are cooling down.</p>
       ) : (
-        <div className="table-scroll"><table className="table">
+        <div className="table-wrap cards"><table className="table">
           <thead>
-            <tr><th>Model</th><th>Credential</th><th>Reason</th><th>Cooldown ends in</th></tr>
+            <tr><th>Model</th><th>Credential</th><th>Reason</th><th className="num">Cooldown ends in</th></tr>
           </thead>
           <tbody>
             {state.cooling.map(c => (
               <tr key={`${c.model_id}:${c.credential_id}`}>
-                <td><code>{c.model_id}</code></td>
-                <td><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
-                <td>{c.cooldown_reason ?? "—"}</td>
-                <td className="mono" title={new Date(c.cooldown_until).toLocaleString()}>
+                <td data-label="Model"><code>{c.model_id}</code></td>
+                <td data-label="Credential"><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
+                <td data-label="Reason">{c.cooldown_reason ?? "—"}</td>
+                <td data-label="Ends in" className="mono num nowrap" title={new Date(c.cooldown_until).toLocaleString()}>
                   {Math.max(0, Math.round((c.cooldown_until - Date.now()) / 1000))}s
                 </td>
               </tr>

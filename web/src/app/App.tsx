@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { api, type AdminState } from "../api/client.js";
 import { useApp } from "./../auth/useAuth.js";
 import { applyTheme, currentTheme, type Theme } from "../theme.js";
@@ -17,6 +17,14 @@ export function App() {
   const [tab, setTab] = useState<Tab>("Overview");
   const [state, setState] = useState<AdminState | null>(null);
   const [theme, setTheme] = useState<Theme>(currentTheme());
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  // On narrow screens the tab strip scrolls horizontally; keep the active tab
+  // visible when it changes (keyboard arrows or tap on a partly clipped tab).
+  useEffect(() => {
+    // Optional chaining also guards jsdom, which lacks scrollIntoView.
+    activeTabRef.current?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [tab]);
 
   const toggleTheme = () => {
     const next: Theme = theme === "dark" ? "light" : "dark";
@@ -42,11 +50,12 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">Gemini Proxy</div>
+        <div className="brand">AI Gate Proxy</div>
         <nav className="tabs" role="tablist" aria-label="Dashboard sections">
           {TABS.map((t, i) => (
             <button
               key={t}
+              ref={tab === t ? activeTabRef : undefined}
               role="tab"
               id={`tab-${t.replace(/\s+/g, "-").toLowerCase()}`}
               aria-selected={tab === t}
@@ -135,7 +144,7 @@ function LoginScreen({ onLogin }: { onLogin: (token: string) => Promise<void> })
   return (
     <div className="login-wrap">
       <form onSubmit={submit} className="login-card form">
-        <h1>Gemini Proxy</h1>
+        <h1>AI Gate Proxy</h1>
         {isSetup ? (
           <>
             <p className="hint">First run: create the admin password for this proxy.</p>

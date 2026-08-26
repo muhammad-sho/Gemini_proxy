@@ -159,26 +159,26 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create a client key</button>
         </div>
       ) : (
-        <div className="table-scroll"><table className="table">
+        <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Label</th><th>Models</th><th>Groups</th><th>Created</th><th /></tr>
           </thead>
           <tbody>
             {state.clientKeys.map(k => (
               <tr key={k.id}>
-                <td>{k.label}</td>
-                <td>
+                <td data-label="Label">{k.label}</td>
+                <td data-label="Models">
                   {k.allowedModels.length === 0
                     ? <span className="pill pill-ready">all models</span>
                     : k.allowedModels.map(m => <span key={m} className="pill pill-idle">{m}</span>)}
                 </td>
-                <td>
+                <td data-label="Groups">
                   {k.allowedGroups.length === 0
                     ? <span className="pill pill-idle">none</span>
                     : k.allowedGroups.map(g => <span key={g} className="pill pill-ready">{g}</span>)}
                 </td>
-                <td>{new Date(k.createdAt * 1000).toLocaleDateString()}</td>
-                <td>
+                <td data-label="Created" className="nowrap">{new Date(k.createdAt * 1000).toLocaleDateString()}</td>
+                <td className="cell-actions">
                   <button
                     className="btn btn-ghost"
                     title="Copy key ID"

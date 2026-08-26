@@ -239,19 +239,19 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add your first provider key</button>
         </div>
       ) : (
-        <div className="table-scroll"><table className="table">
+        <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Label</th><th>Provider</th><th>Base URL</th><th>Models</th><th>Created</th><th /></tr>
           </thead>
           <tbody>
             {state.credentials.map(c => (
               <tr key={c.id}>
-                <td>{c.label}</td>
-                <td><span className="pill pill-idle">{c.provider}</span></td>
-                <td><code>{c.baseUrl ?? "default"}</code></td>
-                <td>{c.allowedModels.length > 0 ? `${c.allowedModels.length} selected` : "—"}</td>
-                <td>{new Date(c.createdAt * 1000).toLocaleDateString()}</td>
-                <td>
+                <td data-label="Label">{c.label}</td>
+                <td data-label="Provider"><span className="pill pill-idle">{c.provider}</span></td>
+                <td data-label="Base URL"><code>{c.baseUrl ?? "default"}</code></td>
+                <td data-label="Models">{c.allowedModels.length > 0 ? `${c.allowedModels.length} selected` : "—"}</td>
+                <td data-label="Created" className="nowrap">{new Date(c.createdAt * 1000).toLocaleDateString()}</td>
+                <td className="cell-actions">
                   <button className="btn btn-ghost" onClick={() => setEditing(c)}>Edit</button>
                   <ConfirmButton
                     prompt="Delete"

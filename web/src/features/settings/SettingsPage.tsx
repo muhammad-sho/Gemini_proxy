@@ -145,15 +145,15 @@ export function SettingsPage() {
       {!audit || audit.logs.length === 0 ? (
         <p className="hint">Nothing recorded yet.</p>
       ) : (
-        <div className="table-scroll"><table className="table">
+        <div className="table-wrap cards"><table className="table">
           <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead>
           <tbody>
             {audit.logs.map(l => (
               <tr key={l.id}>
-                <td className="mono" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
-                <td><span className="pill pill-idle">{l.action}</span></td>
-                <td><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
-                <td className="mono">{l.ipAddress ?? "—"}</td>
+                <td data-label="Time" className="mono nowrap" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+                <td data-label="Action"><span className="pill pill-idle">{l.action}</span></td>
+                <td data-label="Entity"><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
+                <td data-label="IP" className="mono">{l.ipAddress ?? "—"}</td>
               </tr>
             ))}
           </tbody>

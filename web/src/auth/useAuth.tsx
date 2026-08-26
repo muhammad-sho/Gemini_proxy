@@ -62,9 +62,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   return (
     <AppContext.Provider value={{ authed, login, logout, toast }}>
       {children}
-      <div className="toast-stack" role="status">
+      <div className="toast-stack">
         {toasts.map(t => (
-          <div key={t.id} className={`toast toast-${t.kind}`}>{t.message}</div>
+          <div key={t.id} className={`toast toast-${t.kind}`} role={t.kind === "error" ? "alert" : "status"}>
+            {t.message}
+          </div>
         ))}
       </div>
     </AppContext.Provider>

@@ -96,9 +96,9 @@ export function LogsPage() {
         </div>
       </div>
 
-      <table className="table logs-table">
+      <div className="table-wrap"><table className="table logs-table">
         <thead>
-          <tr><th>Time</th><th>Model</th><th>Status</th><th>Outcome</th><th>Attempts</th><th>Latency</th></tr>
+          <tr><th>Time</th><th>Model</th><th className="num">Status</th><th>Outcome</th><th className="num">Attempts</th><th className="num">Latency</th></tr>
         </thead>
         <tbody>
           {logs.map(l => (
@@ -111,12 +111,12 @@ export function LogsPage() {
               onClick={() => void openDetail(l.id)}
               onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void openDetail(l.id); } }}
             >
-              <td className="mono" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+              <td className="mono nowrap" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
               <td><code>{l.modelId ?? "—"}</code></td>
-              <td className="mono">{l.responseStatus ?? "—"}</td>
+              <td className="mono num">{l.responseStatus ?? "—"}</td>
               <td><span className={outcomeClass(l.finalOutcome)}>{l.finalOutcome}</span></td>
-              <td className="mono">{l.attemptNumber}/{l.totalAttempts}</td>
-              <td className="mono">{l.latencyMs != null ? `${l.latencyMs}ms` : "—"}</td>
+              <td className="mono num">{l.attemptNumber}/{l.totalAttempts}</td>
+              <td className="mono num">{l.latencyMs != null ? `${l.latencyMs}ms` : "—"}</td>
             </tr>
           ))}
           {!loading && logs.length === 0 && (
@@ -124,7 +124,7 @@ export function LogsPage() {
           )}
           {loading && <tr><td colSpan={6}><span className="hint">Loading…</span></td></tr>}
         </tbody>
-      </table>
+      </table></div>
 
       <div className="pager">
         <button className="btn btn-ghost" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}>← Prev</button>

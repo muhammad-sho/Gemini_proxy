@@ -139,7 +139,7 @@ function GroupModal({
           {pairs.length === 0 ? (
             <p className="hint">No targets yet. A group needs at least one key × model combination.</p>
           ) : (
-            <div className="table-scroll"><table className="table">
+            <div className="table-wrap"><table className="table">
               <thead><tr><th>Provider key</th><th>Model</th><th /></tr></thead>
               <tbody>
                 {pairs.map((p, i) => {
@@ -212,21 +212,21 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
       </p>
 
       {state.groups.length === 0 ? (
-        <p className="hint">No groups yet.</p>
+        <div className="empty-state">No groups yet — create one to route key × model targets.</div>
       ) : (
-        <div className="table-scroll"><table className="table">
+        <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Name</th><th>Description</th><th>Strategy</th><th>Fallback</th><th>Targets</th><th /></tr>
           </thead>
           <tbody>
             {state.groups.map(g => (
               <tr key={g.id}>
-                <td><strong>{g.name}</strong></td>
-                <td>{g.description || "—"}</td>
-                <td><span className="pill pill-idle">{g.routingStrategy}</span></td>
-                <td>{g.fallbackStrategy ?? "same"}</td>
-                <td>{g.pairs.length}</td>
-                <td>
+                <td data-label="Name"><strong>{g.name}</strong></td>
+                <td data-label="Description">{g.description || "—"}</td>
+                <td data-label="Strategy"><span className="pill pill-idle">{g.routingStrategy}</span></td>
+                <td data-label="Fallback">{g.fallbackStrategy ?? "same"}</td>
+                <td data-label="Targets" className="num">{g.pairs.length}</td>
+                <td className="cell-actions">
                   <button className="btn btn-ghost" onClick={() => setEditing(g)}>Edit</button>
                   <ConfirmButton
                     prompt="Delete"
