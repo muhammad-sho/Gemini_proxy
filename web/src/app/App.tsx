@@ -50,7 +50,13 @@ export function App() {
   return (
     <div className="shell">
       <header className="topbar">
-        <div className="brand">AI Gate Proxy</div>
+        <div className="brand">
+          <span className="brand-badge" aria-hidden>AG</span>
+          <span className="brand-text">
+            <span className="brand-title">AI Gate Proxy</span>
+            <span className="brand-sub">Key-pooling gateway for Gemini &amp; OpenAI-compatible APIs</span>
+          </span>
+        </div>
         <nav className="tabs" role="tablist" aria-label="Dashboard sections">
           {TABS.map((t, i) => (
             <button
@@ -80,7 +86,7 @@ export function App() {
           onClick={toggleTheme}
           title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
         >
-          {theme === "dark" ? "LIGHT" : "DARK"}
+          {theme === "dark" ? "☀️ Light mode" : "🌙 Dark mode"}
         </button>
         <button className="btn btn-ghost" onClick={() => void logout()}>Log out</button>
       </header>
