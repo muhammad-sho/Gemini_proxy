@@ -197,23 +197,28 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
   };
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Groups</h1>
-        <div className="actions">
-          <button className="btn btn-primary" disabled={state.credentials.length === 0} onClick={() => setShowModal(true)}>
-            New group
-          </button>
+    <>
+      <section className="page">
+        <div className="page-header">
+          <h1>Groups</h1>
+          <div className="actions">
+            <button className="btn btn-primary" disabled={state.credentials.length === 0} onClick={() => setShowModal(true)}>
+              New group
+            </button>
+          </div>
         </div>
-      </div>
-      <p className="hint">
-        A group routes over explicit key × model targets and defines how requests rotate between them.
-        Assign groups to client keys; assigned plain models use basic least-used rotation instead.
-      </p>
+        <p className="hint">
+          A group routes over explicit key × model targets and defines how requests rotate between them.
+          Assign groups to client keys; assigned plain models use basic least-used rotation instead.
+        </p>
+      </section>
 
       {state.groups.length === 0 ? (
-        <div className="empty-state">No groups yet — create one to route key × model targets.</div>
+        <section className="page">
+          <div className="empty-state">No groups yet — create one to route key × model targets.</div>
+        </section>
       ) : (
+        <section className="page">
         <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Name</th><th>Description</th><th>Strategy</th><th>Fallback</th><th>Targets</th><th /></tr>
@@ -238,6 +243,7 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
             ))}
           </tbody>
         </table></div>
+        </section>
       )}
 
       {(showModal || editing) && (
@@ -248,6 +254,6 @@ export function GroupsPage({ state, reload }: { state: AdminState; reload: () =>
           onSaved={() => { void reload(); }}
         />
       )}
-    </section>
+    </>
   );
 }

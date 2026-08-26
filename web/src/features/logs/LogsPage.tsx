@@ -71,9 +71,11 @@ export function LogsPage() {
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Request logs</h1>
+    <>
+      <section className="page">
+        <div className="page-header">
+          <h1>Request logs</h1>
+        </div>
         <div className="actions">
           <div className="chips" role="group" aria-label="Filter by outcome">
             {OUTCOMES.map(o => (
@@ -94,8 +96,9 @@ export function LogsPage() {
             onChange={e => { setQuery(e.target.value); setOffset(0); }}
           />
         </div>
-      </div>
+      </section>
 
+      <section className="page">
       <div className="table-wrap"><table className="table logs-table">
         <thead>
           <tr><th>Time</th><th>Model</th><th className="num">Status</th><th>Outcome</th><th className="num">Attempts</th><th className="num">Latency</th></tr>
@@ -131,9 +134,10 @@ export function LogsPage() {
         <span>Page {page} / {pages} · {total} entries</span>
         <button className="btn btn-ghost" disabled={offset + PAGE_SIZE >= total} onClick={() => setOffset(offset + PAGE_SIZE)}>Next →</button>
       </div>
+      </section>
 
       {detail && <LogDetailModal detail={detail} onClose={() => setDetail(null)} />}
-    </section>
+    </>
   );
 }
 

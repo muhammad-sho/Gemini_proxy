@@ -96,7 +96,7 @@ export function App() {
           <p className="hint center">Loading…</p>
         ) : (
           <>
-            <OverviewPage state={state} reload={reload} />
+            {tab === "Overview" && <OverviewPage state={state} reload={reload} />}
             {tab === "Client keys" && <ClientKeysPage state={state} reload={reload} />}
             {tab === "Providers" && <ProviderCredentialsPage state={state} reload={reload} />}
             {tab === "Groups" && <GroupsPage state={state} reload={reload} />}

@@ -68,98 +68,110 @@ export function SettingsPage() {
   };
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Settings</h1>
-        <div className="actions">
-          <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
-            {busy ? "Saving…" : "Save"}
-          </button>
+    <>
+      <section className="page">
+        <div className="page-header">
+          <h1>Settings</h1>
+          <div className="actions">
+            <button className="btn btn-primary" disabled={busy} onClick={() => void save()}>
+              {busy ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
-      </div>
-      <p className="hint">Changes apply immediately — no restart needed. Deployment concerns (ports, hosts) stay in the environment.</p>
+        <p className="hint">Changes apply immediately — no restart needed. Deployment concerns (ports, hosts) stay in the environment.</p>
+      </section>
 
-      <h2>Routing</h2>
-      <form className="form settings-form" onSubmit={e => e.preventDefault()}>
-        {ROUTING_FIELDS.map(f => (
-          <label key={f.key}>
-            {f.label}
-            <input
-              type="number"
-              min={f.min}
-              max={f.max}
-              value={values[f.key]}
-              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
-            />
-            <small className="hint">{f.hint}</small>
-          </label>
-        ))}
-      </form>
+      <section className="page">
+        <h2>Routing</h2>
+        <form className="form settings-form" onSubmit={e => e.preventDefault()}>
+          {ROUTING_FIELDS.map(f => (
+            <label key={f.key}>
+              {f.label}
+              <input
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={values[f.key]}
+                onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
+              />
+              <small className="hint">{f.hint}</small>
+            </label>
+          ))}
+        </form>
+      </section>
 
-      <h2>Limits</h2>
-      <form className="form settings-form" onSubmit={e => e.preventDefault()}>
-        {LIMIT_FIELDS.map(f => (
-          <label key={f.key}>
-            {f.label}
-            <input
-              type="number"
-              min={f.min}
-              max={f.max}
-              value={values[f.key]}
-              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
-            />
-            <small className="hint">{f.hint}</small>
-          </label>
-        ))}
-      </form>
+      <section className="page">
+        <h2>Limits</h2>
+        <form className="form settings-form" onSubmit={e => e.preventDefault()}>
+          {LIMIT_FIELDS.map(f => (
+            <label key={f.key}>
+              {f.label}
+              <input
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={values[f.key]}
+                onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
+              />
+              <small className="hint">{f.hint}</small>
+            </label>
+          ))}
+        </form>
+      </section>
 
-      <h2>Request logs</h2>
-      <form className="form settings-form" onSubmit={e => e.preventDefault()}>
-        {LOG_FIELDS.map(f => (
-          <label key={f.key}>
-            {f.label}
-            <input
-              type="number"
-              min={f.min}
-              max={f.max}
-              value={values[f.key]}
-              onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
-            />
-            <small className="hint">{f.hint}</small>
-          </label>
-        ))}
-      </form>
+      <section className="page">
+        <h2>Request logs</h2>
+        <form className="form settings-form" onSubmit={e => e.preventDefault()}>
+          {LOG_FIELDS.map(f => (
+            <label key={f.key}>
+              {f.label}
+              <input
+                type="number"
+                min={f.min}
+                max={f.max}
+                value={values[f.key]}
+                onChange={e => setValue(f.key, e.target.value, f.min, f.max)}
+              />
+              <small className="hint">{f.hint}</small>
+            </label>
+          ))}
+        </form>
+      </section>
 
-      <h2>Security log</h2>
-      <div className="actions">
-        <select
-          value={auditAction}
-          aria-label="Filter by action"
-          onChange={e => setAuditAction(e.target.value)}
-        >
-          <option value="">All actions</option>
-          {(audit?.actions ?? []).map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
-        {audit && <span className="hint">{audit.total} entries</span>}
-      </div>
-      {!audit || audit.logs.length === 0 ? (
-        <p className="hint">Nothing recorded yet.</p>
-      ) : (
-        <div className="table-wrap cards"><table className="table">
-          <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead>
-          <tbody>
-            {audit.logs.map(l => (
-              <tr key={l.id}>
-                <td data-label="Time" className="mono nowrap" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
-                <td data-label="Action"><span className="pill pill-idle">{l.action}</span></td>
-                <td data-label="Entity"><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
-                <td data-label="IP" className="mono">{l.ipAddress ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      )}
-    </section>
+      <section className="page">
+        <div className="page-header">
+          <h2>Security log</h2>
+          <div className="actions">
+            <select
+              value={auditAction}
+              aria-label="Filter by action"
+              onChange={e => setAuditAction(e.target.value)}
+            >
+              <option value="">All actions</option>
+              {(audit?.actions ?? []).map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+            {audit && <span className="hint">{audit.total} entries</span>}
+          </div>
+        </div>
+        {!audit || audit.logs.length === 0 ? (
+          <p className="hint">Nothing recorded yet.</p>
+        ) : (
+          <div className="table-wrap cards"><table className="table">
+            <thead><tr><th>Time</th><th>Action</th><th>Entity</th><th>IP</th></tr></thead>
+            <tbody>
+              {audit.logs.map(l => (
+                <tr key={l.id}>
+                  <td data-label="Time" className="mono nowrap" title={new Date(l.createdAt * 1000).toLocaleString()}>{relTime(l.createdAt)}</td>
+                  <td data-label="Action"><span className="pill pill-idle">{l.action}</span></td>
+                  <td data-label="Entity"><code>{[l.entityType, l.entityId].filter(Boolean).join(":") || "—"}</code></td>
+                  <td data-label="IP" className="mono">{l.ipAddress ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table></div>
+        )}
+      </section>
+    </>
   );
 }
 

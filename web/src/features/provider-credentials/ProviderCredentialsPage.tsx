@@ -223,22 +223,27 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
   };
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Provider credentials</h1>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add provider API key</button>
+    <>
+      <section className="page">
+        <div className="page-header">
+          <h1>Provider credentials</h1>
+          <div className="actions">
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add provider API key</button>
+          </div>
         </div>
-      </div>
+        <p className="hint">Upstream API keys that power the gateway — Google Gemini or OpenAI-compatible endpoints.</p>
+      </section>
 
       {state.credentials.length === 0 ? (
-        <div className="notice">
-          <p className="hint hint-first">
+        <section className="page">
+          <div className="empty-state">
             No provider credentials yet. Add your upstream API key, pick the models it serves, and the proxy starts routing.
-          </p>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add your first provider key</button>
-        </div>
+            <br />
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add your first provider key</button>
+          </div>
+        </section>
       ) : (
+        <section className="page">
         <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Label</th><th>Provider</th><th>Base URL</th><th>Models</th><th>Created</th><th /></tr>
@@ -263,6 +268,7 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
             ))}
           </tbody>
         </table></div>
+        </section>
       )}
 
       {(showModal || editing) && (
@@ -272,6 +278,6 @@ export function ProviderCredentialsPage({ state, reload }: { state: AdminState; 
           onSaved={() => { void reload(); }}
         />
       )}
-    </section>
+    </>
   );
 }

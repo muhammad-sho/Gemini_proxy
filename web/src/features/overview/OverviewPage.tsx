@@ -56,16 +56,7 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
   }, [summary]);
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Overview</h1>
-        <div className="actions">
-          <ConfirmButton prompt="Clear all cooldowns" onConfirm={async () => { await api.clearCooldowns(); await refreshAll(); }}>
-            Clear cooldowns
-          </ConfirmButton>
-        </div>
-      </div>
-
+    <>
       <div className="stat-grid">
         <div className="stat-card">
           <div className="stat-value">{state.clientKeys.length}</div>
@@ -85,74 +76,90 @@ export function OverviewPage({ state, reload }: { state: AdminState; reload: () 
         </div>
       </div>
 
-      <div className="page-header">
-        <h2>Usage by key × model</h2>
-        <div className="actions" role="group" aria-label="Usage window">
-          <button className={`btn ${usageDays === 1 ? "btn-primary" : ""}`} onClick={() => setUsageDays(1)}>Today</button>
-          <button className={`btn ${usageDays === 7 ? "btn-primary" : ""}`} onClick={() => setUsageDays(7)}>Last 7 days</button>
+      <section className="page">
+        <div className="page-header">
+          <h2>Usage by key × model</h2>
+          <div className="actions" role="group" aria-label="Usage window">
+            <button className={`btn ${usageDays === 1 ? "btn-primary" : ""}`} onClick={() => setUsageDays(1)}>Today</button>
+            <button className={`btn ${usageDays === 7 ? "btn-primary" : ""}`} onClick={() => setUsageDays(7)}>Last 7 days</button>
+          </div>
         </div>
-      </div>
 
-      {!matrix || matrix.rows.length === 0 || matrix.keyColumns.length === 0 ? (
-        <p className="hint">No usage to display yet — add a provider credential and start proxying requests.</p>
-      ) : (
-        <div className="matrix-wrap">
-          <table className="table matrix" aria-label="Requests per key and model">
-            <thead>
-              <tr>
-                <th scope="col">Model</th>
-                {matrix.keyColumns.map(k => (
-                  <th scope="col" key={k.id} title={k.label}>{k.label}</th>
+        {!matrix || matrix.rows.length === 0 || matrix.keyColumns.length === 0 ? (
+          <p className="hint">No usage to display yet — add a provider credential and start proxying requests.</p>
+        ) : (
+          <div className="matrix-wrap">
+            <table className="table matrix" aria-label="Requests per key and model">
+              <thead>
+                <tr>
+                  <th scope="col">Model</th>
+                  {matrix.keyColumns.map(k => (
+                    <th scope="col" key={k.id} title={k.label}>{k.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {matrix.rows.map(row => (
+                  <tr key={row.modelId}>
+                    <th scope="row" className="matrix-model"><code>{row.modelId}</code></th>
+                    {row.cells.map((cell, i) => (
+                      <td key={matrix.keyColumns[i].id} className={`matrix-cell cell-${cell.tone}`}>
+                        {cell.count === null ? "·" : cell.count}
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+        {matrix && matrix.rows.length > 0 && matrix.keyColumns.length > 0 && (
+          <p className="hint">
+            Requests per provider key × model for the selected window.
+            <span className="cell-legend"><span className="matrix-cell cell-ok">n</span> active</span>
+            <span className="cell-legend"><span className="matrix-cell cell-cooling">n</span> cooling</span>
+            <span className="cell-legend"><span className="matrix-cell cell-err">n</span> failing</span>
+            <span className="cell-legend"><span className="matrix-cell cell-idle">·</span> no requests</span>
+          </p>
+        )}
+      </section>
+
+      <section className="page">
+        <h2>Active cooldowns</h2>
+        {state.cooling.length === 0 ? (
+          <p className="hint">No keys are cooling down.</p>
+        ) : (
+          <div className="table-wrap cards"><table className="table">
+            <thead>
+              <tr><th>Model</th><th>Credential</th><th>Reason</th><th className="num">Cooldown ends in</th></tr>
             </thead>
             <tbody>
-              {matrix.rows.map(row => (
-                <tr key={row.modelId}>
-                  <th scope="row" className="matrix-model"><code>{row.modelId}</code></th>
-                  {row.cells.map((cell, i) => (
-                    <td key={matrix.keyColumns[i].id} className={`matrix-cell cell-${cell.tone}`}>
-                      {cell.count === null ? "·" : cell.count}
-                    </td>
-                  ))}
+              {state.cooling.map(c => (
+                <tr key={`${c.model_id}:${c.credential_id}`}>
+                  <td data-label="Model"><code>{c.model_id}</code></td>
+                  <td data-label="Credential"><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
+                  <td data-label="Reason">{c.cooldown_reason ?? "—"}</td>
+                  <td data-label="Ends in" className="mono num nowrap" title={new Date(c.cooldown_until).toLocaleString()}>
+                    {Math.max(0, Math.round((c.cooldown_until - Date.now()) / 1000))}s
+                  </td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
-      )}
-      {matrix && matrix.rows.length > 0 && matrix.keyColumns.length > 0 && (
-        <p className="hint">
-          Requests per provider key × model for the selected window.
-          <span className="cell-legend"><span className="matrix-cell cell-ok">n</span> active</span>
-          <span className="cell-legend"><span className="matrix-cell cell-cooling">n</span> cooling</span>
-          <span className="cell-legend"><span className="matrix-cell cell-err">n</span> failing</span>
-          <span className="cell-legend"><span className="matrix-cell cell-idle">·</span> no requests</span>
-        </p>
-      )}
+          </table></div>
+        )}
+      </section>
 
-      <h2>Active cooldowns</h2>
-      {state.cooling.length === 0 ? (
-        <p className="hint">No keys are cooling down.</p>
-      ) : (
-        <div className="table-wrap cards"><table className="table">
-          <thead>
-            <tr><th>Model</th><th>Credential</th><th>Reason</th><th className="num">Cooldown ends in</th></tr>
-          </thead>
-          <tbody>
-            {state.cooling.map(c => (
-              <tr key={`${c.model_id}:${c.credential_id}`}>
-                <td data-label="Model"><code>{c.model_id}</code></td>
-                <td data-label="Credential"><code>{(state.credentials.find(x => x.id === c.credential_id)?.label ?? c.credential_id).slice(0, 20)}</code></td>
-                <td data-label="Reason">{c.cooldown_reason ?? "—"}</td>
-                <td data-label="Ends in" className="mono num nowrap" title={new Date(c.cooldown_until).toLocaleString()}>
-                  {Math.max(0, Math.round((c.cooldown_until - Date.now()) / 1000))}s
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table></div>
-      )}
-    </section>
+      <section className="page">
+        <div className="page-header">
+          <h2>Maintenance</h2>
+          <div className="actions">
+            <ConfirmButton prompt="Clear all cooldowns" onConfirm={async () => { await api.clearCooldowns(); await refreshAll(); }}>
+              Clear cooldowns
+            </ConfirmButton>
+          </div>
+        </div>
+        <p className="hint">Force-bench reset: puts every cooling key back into rotation immediately.</p>
+      </section>
+    </>
   );
 }

@@ -135,13 +135,16 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
   };
 
   return (
-    <section className="page">
-      <div className="page-header">
-        <h1>Client API keys</h1>
-        <div className="actions">
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add client API key</button>
+    <>
+      <section className="page">
+        <div className="page-header">
+          <h1>Client API keys</h1>
+          <div className="actions">
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Add client API key</button>
+          </div>
         </div>
-      </div>
+        <p className="hint">Keys your applications use to call the proxy — scope each one to models or groups.</p>
+      </section>
 
       {freshKey && (
         <div className="notice">
@@ -152,13 +155,15 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
       )}
 
       {state.clientKeys.length === 0 ? (
-        <div className="notice">
-          <p className="hint hint-first">
-            Client keys are what your applications use to call the proxy — create one, assign models or groups, and point your app at the gateway.
-          </p>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create a client key</button>
-        </div>
+        <section className="page">
+          <div className="empty-state">
+            No client keys yet. Create one, assign models or groups, and point your app at the gateway.
+            <br />
+            <button className="btn btn-primary" onClick={() => setShowModal(true)}>Create a client key</button>
+          </div>
+        </section>
       ) : (
+        <section className="page">
         <div className="table-wrap cards"><table className="table">
           <thead>
             <tr><th>Label</th><th>Models</th><th>Groups</th><th>Created</th><th /></tr>
@@ -203,6 +208,7 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
             ))}
           </tbody>
         </table></div>
+        </section>
       )}
 
       {(showModal || editing) && (
@@ -214,6 +220,6 @@ export function ClientKeysPage({ state, reload }: { state: AdminState; reload: (
           onCreated={created => setFreshKey(created.clientApiKey)}
         />
       )}
-    </section>
+    </>
   );
 }

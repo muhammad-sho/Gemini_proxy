@@ -99,7 +99,7 @@ h1 { font-size: 20px; font-weight: 800; margin: 0; letter-spacing: -0.02em; }
 h2 { font-size: 16px; font-weight: 800; margin: 26px 0 12px; color: var(--text); }
 h3 { font-size: 14px; font-weight: 700; margin: 16px 0 8px; }
 
-.page > h2:first-of-type { margin-top: 24px; }
+.page > h2:first-of-type { margin-top: 4px; }
 
 a { color: var(--text); }
 
@@ -114,12 +114,16 @@ a { color: var(--text); }
 .shell { max-width: 1120px; margin: 0 auto; padding: 32px 16px calc(64px + env(safe-area-inset-bottom, 0px)); }
 .center { text-align: center; margin-top: 80px; }
 
+/* Each tab is a stack of independent cards — no nested boxes. */
+main { display: flex; flex-direction: column; gap: 24px; }
+
 .page {
   background: var(--surface);
   border: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
   padding: 24px;
 }
+.page > h2:first-child { margin-top: 0; }
 
 /* ---------------------------------------------------------------- topbar */
 .topbar {
@@ -201,8 +205,8 @@ input::placeholder { color: var(--text-muted); opacity: 1; }
 .form { display: flex; flex-direction: column; gap: 14px; }
 .form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text-2); }
 .form label input, .form label select { font-weight: 400; width: 100%; }
-fieldset { border: 1px solid var(--border); padding: 14px; margin: 0; }
-legend { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0 6px; }
+fieldset { border: none; padding: 0; margin: 0; }
+legend { color: var(--text-muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 0 0 6px; }
 
 .model-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px; max-height: 240px; overflow-y: auto; border: 1px solid var(--input-border); padding: 4px; background: var(--input-bg); }
 .model-option { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-family: var(--font-mono); font-size: 12px; padding: 6px 8px; color: var(--text); background: none; border: none; cursor: pointer; text-align: left; width: 100%; }
@@ -243,7 +247,7 @@ legend { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spa
 .pill-idle { color: var(--text-muted); background: var(--surface-2); }
 
 /* ------------------------------------------------------------------ stats */
-.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 14px 0 20px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
 .stat-card {
   display: flex; flex-direction: column-reverse; gap: 8px;
   background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-sm); padding: 22px;
@@ -374,7 +378,7 @@ legend { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spa
 }
 
 /* --------------------------------------------------- usage matrix (heatmap) */
-.matrix-wrap { overflow: auto; max-height: 480px; border: 1px solid var(--cell-line); }
+.matrix-wrap { overflow: auto; max-height: 480px; }
 .matrix { margin-top: 0; border: none; min-width: 100%; }
 .matrix th, .matrix td { border-right: 1px solid var(--cell-line); border-bottom: 1px solid var(--cell-line); }
 .matrix thead th:last-child, .matrix tbody td:last-child { border-right: none; }
@@ -416,6 +420,7 @@ legend { color: var(--text-muted); font-size: 11px; font-weight: 700; letter-spa
 
   /* tighter shell */
   .shell { padding: 16px 12px calc(48px + env(safe-area-inset-bottom, 0px)); }
+  main { gap: 16px; }
   .page { padding: 16px 14px; }
   .topbar { padding: 14px 16px; gap: 10px; }
   .brand-badge { width: 32px; height: 32px; font-size: 13px; }
