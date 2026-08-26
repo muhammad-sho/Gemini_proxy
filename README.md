@@ -1,4 +1,4 @@
-# Gemini Proxy
+# AI Gate Proxy
 
 A self-hosted Gemini API proxy that pools multiple Google Gemini API keys behind one stable endpoint. It picks the best available key for every request, handles rate limits and cooldowns automatically, and speaks the standard Gemini API — so any app that can call Gemini can use it without changes.
 
@@ -91,8 +91,8 @@ latency, and truncated/masked payloads.
 You only need Docker installed. **No configuration is required to boot** — the admin password is created in the browser on first open.
 
 ```bash
-mkdir gemini-proxy && cd gemini-proxy
-curl -fsSL -O https://raw.githubusercontent.com/muhammad-sho/Gemini_proxy/main/docker-compose.yml
+mkdir ai-gate-proxy && cd ai-gate-proxy
+curl -fsSL -O https://raw.githubusercontent.com/muhammad-sho/ai-gate-proxy/main/docker-compose.yml
 docker compose up -d
 ```
 
@@ -112,8 +112,8 @@ All app data lives in the `./data` folder next to `docker-compose.yml` — that 
 Requires Node.js 22+.
 
 ```bash
-git clone https://github.com/muhammad-sho/Gemini_proxy.git
-cd Gemini_proxy
+git clone https://github.com/muhammad-sho/ai-gate-proxy.git
+cd ai-gate-proxy
 npm install --legacy-peer-deps
 npm run dev          # tsx watch on src/
 ```
@@ -276,7 +276,7 @@ There are no secrets to configure. The admin password is created in the browser 
 
 All app data lives in one folder: `./data` next to the compose file (`/data` inside the container). It holds:
 
-* `gemini-proxy.db` (+ `-wal`/`-shm` while running) — admin password hash, client key hashes, settings, usage counters, cooldown state, request/audit logs
+* `ai-gate-proxy.db` (+ `-wal`/`-shm` while running) — admin password hash, client key hashes, settings, usage counters, cooldown state, request/audit logs
 * `encryption.key` — key that decrypts stored provider credentials
 * provider credentials themselves (AES-256-GCM encrypted)
 
@@ -286,13 +286,13 @@ Migrations run automatically at startup and are versioned in the `schema_version
 
 ```bash
 docker compose stop          # or Ctrl+C the process
-tar czf gemini-proxy-backup-$(date +%F).tgz data/
+tar czf ai-gate-proxy-backup-$(date +%F).tgz data/
 ```
 
 **Backup (online):**
 
 ```bash
-sqlite3 data/gemini-proxy.db ".backup 'data/backups/gemini-proxy-$(date +%F).db'"
+sqlite3 data/ai-gate-proxy.db ".backup 'data/backups/ai-gate-proxy-$(date +%F).db'"
 ```
 
 **Restore / migrate to another machine:** stop the app, replace (or copy) the `data/` folder, start again. That's it — the folder is self-contained.
@@ -339,7 +339,7 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 * **Model not permitted** — the client key's allowlist doesn't include this model.
 * **503 No API keys** — add a provider credential; cooled keys still count, this only appears with an empty pool.
 * **Readiness failing on encryption** — the app cannot write its encryption key into `data/`; check disk space and folder permissions.
-* **Forgot the admin password?** Stop the app, run `sqlite3 data/gemini-proxy.db "DELETE FROM admin_users; DELETE FROM admin_sessions;"`, start again — the dashboard offers first-run setup once more (client keys and provider credentials are unaffected).
+* **Forgot the admin password?** Stop the app, run `sqlite3 data/ai-gate-proxy.db "DELETE FROM admin_users; DELETE FROM admin_sessions;"`, start again — the dashboard offers first-run setup once more (client keys and provider credentials are unaffected).
 * **Dashboard unreachable from another machine (Docker)** — check that the `ports:` mapping for 18765 isn't prefixed with `127.0.0.1:`, and that no firewall blocks the port. Source runs bind the dashboard to loopback by default (`ADMIN_HOST`).
 * **Database read-only / SQLITE_CANTOPEN** — no action needed: the container entrypoint fixes `/data` ownership on startup and drops to an unprivileged user before running the server. If you override `user:` in Compose, point it at a uid that can write the mounted directory.
 
@@ -347,4 +347,4 @@ GitHub Actions runs typecheck (server + web), ESLint, Vitest, the dashboard buil
 
 # Project
 
-Repository: https://github.com/muhammad-sho/Gemini_proxy
+Repository: https://github.com/muhammad-sho/ai-gate-proxy

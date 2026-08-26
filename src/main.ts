@@ -14,7 +14,7 @@ async function main(): Promise<void> {
       ports: { gemini: config.geminiPort, openai: config.openaiPort, admin: config.adminPort },
       hosts: { gateway: config.gatewayHost, admin: config.adminHost }
     },
-    "Starting Gemini Proxy"
+    "Starting AI Gate Proxy"
   );
 
   let shuttingDown = false;

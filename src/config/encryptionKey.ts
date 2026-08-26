@@ -12,7 +12,7 @@ export function dataDir(): string {
 }
 
 export function dbPath(): string {
-  return join(dataDir(), "gemini-proxy.db");
+  return join(dataDir(), "ai-gate-proxy.db");
 }
 
 /**

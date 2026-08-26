@@ -4,9 +4,9 @@
 # dashboard's Settings tab.
 
 services:
-  gemini-proxy:
-    image: ghcr.io/muhammad-sho/gemini-proxy:latest
-    container_name: gemini-proxy
+  ai-gate-proxy:
+    image: ghcr.io/muhammad-sho/ai-gate-proxy:latest
+    container_name: ai-gate-proxy
     restart: unless-stopped
     ports:
       - "18770:18770"   # Gemini-protocol gateway (/v1beta/*)

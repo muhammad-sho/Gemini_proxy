@@ -48,7 +48,7 @@ export function openaiRoutes(deps: AppDeps): FastifyPluginAsync {
         .map(m => ({
           id: m.id,
           object: "model",
-          owned_by: "gemini-proxy"
+          owned_by: "ai-gate-proxy"
         }));
 
       return reply.send({ object: "list", data });

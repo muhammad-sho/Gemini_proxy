@@ -1,6 +1,6 @@
 export type Theme = "light" | "dark";
 
-const STORAGE_KEY = "gemini-proxy-theme";
+const STORAGE_KEY = "ai-gate-proxy-theme";
 
 /** Apply the theme to <html> and remember the choice. */
 export function applyTheme(theme: Theme): void {
